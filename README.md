@@ -26,6 +26,12 @@ Ne publie **pas** les fichiers de données `config.json`, `warnings.json`, `robl
 
 Le même service Render héberge maintenant le bot **et** le panel à la racine de son URL `https://votre-service.onrender.com/`. Le Start Command reste `python -u rene_interimaire_render_final.py`. `/health` reste disponible pour la surveillance et `/status` renvoie le statut JSON de René.
 
+### Démarrage immédiat sur Windows si la sortie Render est limitée
+
+Dans PowerShell, dans le dossier du projet, lance `powershell -NoProfile -ExecutionPolicy Bypass -File .\run-local.ps1`. Le script demande en privé le `DISCORD_TOKEN` du bot René et les valeurs `STATE_SECRET` / `STATE_SECRET_PREVIOUS` actuellement configurées sur Render. Laisse la fenêtre ouverte. Pour arrêter René, appuie sur `Ctrl+C`. Aucune valeur n'est écrite dans le dépôt. Le bot doit pouvoir accéder à Discord depuis la connexion Internet du PC ; une réponse HTTP 200 sur `/gateway` ne garantit pas à elle seule que l'authentification du bot réussira.
+
+Ce démarrage local exécute uniquement le bot Discord. Le panel hébergé sur Render ne peut pas afficher les données du processus Windows ; il restera indisponible pour les statistiques et actions Discord tant que le bot Render est déconnecté. Avant que Render ne reconnecte automatiquement son bot, arrête l'instance locale pour éviter deux instances avec le même token.
+
 Si les logs montrent `HTTP 429` dès « Connexion de René à Discord », Discord limite la connexion sortante du service. René garde le site web actif et attend 15, puis 30, puis 60 minutes au minimum entre les tentatives (plus si Discord indique `Retry-After`). `/health` affiche `rate_limited`, l'heure de la prochaine tentative et, s'il est fourni, le `CF-Ray`. Ne redémarre pas le service en boucle : cela multiplie les tentatives. Vérifie qu'une seule instance utilise le token Discord. Si le blocage persiste, contacte le support développeur Discord avec le `CF-Ray`, l'heure UTC et les plages IP sortantes visibles dans **Render → service → Connect → Outbound**. Render partage normalement ces adresses entre services d'une région ; changer le token ou le code du bot ne débloque pas une adresse IP limitée. Une autre sortie réseau stable (par exemple un proxy HTTP(S) autorisé ou une IP dédiée Render) peut être configurée, mais elle doit être disponible séparément et ne garantit pas que Discord l'accepte. Les variables NathGPT et Supabase ne corrigent pas cette erreur.
 
 Dans **Render → Environment**, ajoute :
