@@ -26,13 +26,15 @@ Ne publie **pas** les fichiers de données `config.json`, `warnings.json`, `robl
 
 Le même service Render héberge maintenant le bot **et** le panel à la racine de son URL `https://votre-service.onrender.com/`. Le Start Command reste `python -u rene_interimaire_render_final.py`. `/health` reste disponible pour la surveillance et `/status` renvoie le statut JSON de René.
 
-Si les logs montrent `discord.errors.HTTPException: 429` avec **Cloudflare 1015** pendant `GET /users/@me`, Discord bloque temporairement la connexion sortante du service. René garde alors le site web actif et attend 15, puis 30, puis 60 minutes entre les tentatives de connexion. Ne redémarre pas le service en boucle : cela multiplie les tentatives. Vérifie aussi qu'une seule instance utilise le token Discord. Si le blocage persiste, contacte le support Discord avec le **Ray ID** affiché dans l'erreur et l'adresse IP sortante du service Render. Les variables NathGPT et Supabase ne corrigent pas cette erreur de connexion Discord.
+Si les logs montrent `HTTP 429` dès « Connexion de René à Discord », Discord limite la connexion sortante du service. René garde le site web actif et attend 15, puis 30, puis 60 minutes au minimum entre les tentatives (plus si Discord indique `Retry-After`). `/health` affiche `rate_limited`, l'heure de la prochaine tentative et, s'il est fourni, le `CF-Ray`. Ne redémarre pas le service en boucle : cela multiplie les tentatives. Vérifie qu'une seule instance utilise le token Discord. Si le blocage persiste, contacte le support développeur Discord avec le `CF-Ray`, l'heure UTC et les plages IP sortantes visibles dans **Render → service → Connect → Outbound**. Render partage normalement ces adresses entre services d'une région ; changer le token ou le code du bot ne débloque pas une adresse IP limitée. Une autre sortie réseau stable (par exemple un proxy HTTP(S) autorisé ou une IP dédiée Render) peut être configurée, mais elle doit être disponible séparément et ne garantit pas que Discord l'accepte. Les variables NathGPT et Supabase ne corrigent pas cette erreur.
 
 Dans **Render → Environment**, ajoute :
 
 | Variable | Usage |
 | --- | --- |
 | `DISCORD_TOKEN` | Token du bot, déjà utilisé par René. |
+| `DISCORD_PROXY_URL` | Facultatif : URL d'un proxy HTTP(S) pour les connexions Discord, par exemple `http://proxy.example:8080`. Laisser vide sans proxy. |
+| `DISCORD_PROXY_USER` / `DISCORD_PROXY_PASSWORD` | Facultatifs : identifiants du proxy si nécessaire. À renseigner uniquement dans Render, jamais dans GitHub. |
 | `PANEL_PASSWORD` | Mot de passe fort pour accéder au panel. |
 | `PANEL_SECRET` | Chaîne aléatoire d'au moins 32 caractères pour signer les sessions (par exemple `python -c "import secrets; print(secrets.token_urlsafe(48))"`). |
 | `NATHGPT_API_KEY` | Ta clé `ngt_...` pour NathGPT. La variable `token` de ton exemple fonctionne aussi. Ne la mets jamais dans le code ni dans le navigateur. |

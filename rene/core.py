@@ -25,6 +25,7 @@ from waitress import serve
 import imageio_ffmpeg
 
 import discord
+from aiohttp import BasicAuth
 from discord import app_commands
 from discord.ext import commands, tasks
 
@@ -104,6 +105,20 @@ IMAGE_IDLE = asset_path("IDLE.png")
 AUDIO_WAITING = asset_path("ATTENTE.mp3", "ATTENTE.MP3")
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+discord_connection = {"status": "starting", "retry_at": None, "cf_ray": None, "scope": None}
+
+
+def set_discord_connection(status: str, *, retry_at: str | None = None,
+                           cf_ray: str | None = None, scope: str | None = None) -> None:
+    # Le serveur web lit cet état depuis un autre thread. Remplacer le dictionnaire
+    # d'un coup évite de présenter un mélange de deux tentatives.
+    global discord_connection
+    discord_connection = {
+        "status": status,
+        "retry_at": retry_at,
+        "cf_ray": cf_ray,
+        "scope": scope,
+    }
 
 MAX_WARNINGS = 10
 DISCORD_BAN_DURATION = timedelta(days=1)
@@ -595,7 +610,7 @@ def current_web_status() -> str:
             return "online"
     except NameError:
         pass
-    return "starting"
+    return discord_connection["status"]
 
 
 @web_app.get("/status")
@@ -606,6 +621,7 @@ def web_home():
             "bot": "René L'Intérimaire",
             "studio": "VoidLoop Studio",
             "status": status,
+            "retry_at": discord_connection["retry_at"] if status == "rate_limited" else None,
         }
     ), 200
 
@@ -618,11 +634,16 @@ def web_health():
             "ok": True,
             "status": status,
             "discord_ready": bot_is_ready(),
+            "retry_at": discord_connection["retry_at"] if status == "rate_limited" else None,
+            "cf_ray": discord_connection["cf_ray"] if status == "rate_limited" else None,
+            "rate_limit_scope": discord_connection["scope"] if status == "rate_limited" else None,
             "message": (
                 "René est en service !"
                 if status == "online"
                 else "René dort volontairement."
                 if status == "sleeping"
+                else "Discord limite temporairement la connexion de René."
+                if status == "rate_limited"
                 else "René démarre..."
             ),
         }
@@ -701,11 +722,15 @@ class ReneBot(commands.Bot):
         intents.members = True
         intents.message_content = True
         intents.voice_states = True
+        proxy_user = os.getenv("DISCORD_PROXY_USER")
 
         super().__init__(
             command_prefix="!",
             intents=intents,
             tree_cls=ReneCommandTree,
+            proxy=os.getenv("DISCORD_PROXY_URL") or None,
+            proxy_auth=BasicAuth(proxy_user, os.getenv("DISCORD_PROXY_PASSWORD", ""))
+            if proxy_user else None,
             allowed_mentions=discord.AllowedMentions(
                 users=True,
                 roles=False,
