@@ -26,6 +26,8 @@ Ne publie **pas** les fichiers de données `config.json`, `warnings.json`, `robl
 
 Le même service Render héberge maintenant le bot **et** le panel à la racine de son URL `https://votre-service.onrender.com/`. Le Start Command reste `python -u rene_interimaire_render_final.py`. `/health` reste disponible pour la surveillance et `/status` renvoie le statut JSON de René.
 
+Si les logs montrent `discord.errors.HTTPException: 429` avec **Cloudflare 1015** pendant `GET /users/@me`, Discord bloque temporairement la connexion sortante du service. René garde alors le site web actif et attend 15, puis 30, puis 60 minutes entre les tentatives de connexion. Ne redémarre pas le service en boucle : cela multiplie les tentatives. Vérifie aussi qu'une seule instance utilise le token Discord. Si le blocage persiste, contacte le support Discord avec le **Ray ID** affiché dans l'erreur et l'adresse IP sortante du service Render. Les variables NathGPT et Supabase ne corrigent pas cette erreur de connexion Discord.
+
 Dans **Render → Environment**, ajoute :
 
 | Variable | Usage |
