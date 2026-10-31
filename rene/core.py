@@ -730,6 +730,7 @@ class ReneBot(commands.Bot):
         self.question_locks: dict[tuple[int, str], asyncio.Lock] = {}
         self.remote_state_loaded = False
         self.remote_state_message_id: int | None = None
+        self.remote_state_unreadable = False
         self.state_backup_task: asyncio.Task[None] | None = None
         self.state_backup_dirty = False
         self.stopping = False
@@ -880,11 +881,12 @@ def get_primary_state_cipher() -> Fernet:
 
 
 def get_state_decryption_ciphers() -> list[Fernet]:
-    # Permet de définir STATE_SECRET sans perdre une ancienne sauvegarde
-    # qui avait été chiffrée avec le token Discord.
+    # STATE_SECRET_PREVIOUS permet de changer la clé sans perdre la sauvegarde.
+    # Le token Discord reste accepté pour les sauvegardes historiques.
     secrets: list[str] = []
     for candidate in (
         os.getenv("STATE_SECRET"),
+        os.getenv("STATE_SECRET_PREVIOUS"),
         DISCORD_TOKEN,
         "rene-local-fallback",
     ):
@@ -1045,6 +1047,7 @@ async def load_state_from_discord() -> bool:
         )
         return True
     except InvalidToken:
+        bot.remote_state_unreadable = True
         logger.error(
             "La sauvegarde existe mais sa clé ne correspond plus. "
             "Vérifie la variable STATE_SECRET. René conserve la sauvegarde "
@@ -1066,6 +1069,13 @@ async def load_state_from_discord() -> bool:
 
 async def persist_state_to_discord() -> bool:
     if bot.user is None:
+        return False
+
+    if bot.remote_state_unreadable:
+        logger.error(
+            "Sauvegarde distante bloquée : l'ancienne sauvegarde est illisible. "
+            "Vérifie STATE_SECRET et STATE_SECRET_PREVIOUS."
+        )
         return False
 
     channel = await get_persistence_channel()

@@ -1,0 +1,29 @@
+# Données du bot : sauvegardées à l'exécution, jamais publiées sur GitHub.
+/config.json
+/warnings.json
+/roblox_links.json
+/temporary_bans.json
+/moderation_cases.json
+/departed_members.json
+/questions.json
+/rene_state_backup.bin
+/rene_config_backup.json
+
+# Secrets et fichiers locaux.
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.tmp
+*.db
+*.sqlite3
+*.lnk
+Thumbs.db
+.DS_Store
+
+# Image de travail non utilisée par le bot ni par le panel.
+/fea8d179-8e18-4f9f-98cb-f60480b1c69e.png

@@ -12,8 +12,13 @@ async def on_ready() -> None:
     if not bot.remote_state_loaded:
         bot.remote_state_loaded = True
         loaded = await load_state_from_discord()
-        if not loaded or bot.remote_state_message_id is None:
+        if not bot.remote_state_unreadable and (not loaded or bot.remote_state_message_id is None):
             await persist_state_to_discord()
+        elif loaded and os.getenv("STATE_SECRET_PREVIOUS") and not bot.remote_state_unreadable:
+            # Réécrit la sauvegarde avec la nouvelle clé dès que l'ancienne
+            # a été relue ; l'ancienne variable pourra ensuite être supprimée.
+            if await persist_state_to_discord():
+                logger.info("Sauvegarde chiffrée avec le nouveau STATE_SECRET.")
 
     # Les boucles démarrent seulement après le chargement de l'état persistant.
     if not temporary_ban_checker.is_running():
