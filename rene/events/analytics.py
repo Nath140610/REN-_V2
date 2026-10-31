@@ -34,6 +34,13 @@ async def on_voice_state_update(member, before, after):
         voice_sessions[key] = current
 
 
+async def on_presence_update(before, after):
+    if after.bot or not core.bot.remote_state_loaded or not core.bot.intents.presences:
+        return
+    if before.status != core.discord.Status.offline or after.status != core.discord.Status.offline:
+        analytics.record_seen(after.guild.id, after.id, 'last_online')
+
+
 async def on_disconnect():
     # Ne jamais compter le temps passé hors connexion comme de la présence.
     flush_voice()
@@ -55,6 +62,10 @@ async def collect():
         flush_voice()
         for guild in core.bot.guilds:
             analytics.day(guild.id)
+            if core.bot.intents.presences:
+                for member in guild.members:
+                    if not member.bot and member.status != core.discord.Status.offline:
+                        analytics.record_seen(guild.id, member.id, 'last_online')
             for channel in guild.voice_channels + guild.stage_channels:
                 for member in channel.members:
                     if not member.bot:
@@ -62,7 +73,8 @@ async def collect():
         core.save_runtime_json(core.CONFIG_FILE, core.bot.config_data)
 
 
-LISTENERS = (on_message, on_member_join, on_member_remove, on_voice_state_update, on_disconnect)
+LISTENERS = (on_message, on_member_join, on_member_remove,
+             on_voice_state_update, on_presence_update, on_disconnect)
 
 
 async def setup(client):

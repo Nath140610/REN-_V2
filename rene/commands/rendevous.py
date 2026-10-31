@@ -134,6 +134,54 @@ def new_rendezvous_id() -> str:
     return uuid.uuid4().hex[:10].upper()
 
 
+async def create_from_panel(guild: discord.Guild, target_id: int,
+                            scheduled: datetime, requester_id: int) -> dict:
+    """Crée une demande avec les mêmes boutons et rappels que /rendevous."""
+    target = guild.get_member(target_id)
+    if target is None or target.bot or target_id == requester_id:
+        raise ValueError('Choisis une autre personne du serveur pour ce rendez-vous.')
+    if scheduled.tzinfo is None:
+        raise ValueError('La date du rendez-vous doit avoir un fuseau horaire.')
+    scheduled = scheduled.astimezone(timezone.utc)
+    delay = scheduled - datetime.now(timezone.utc)
+    if delay < MINIMUM_DELAY or delay > timedelta(days=90):
+        raise ValueError('Prévois le rendez-vous entre 10 minutes et 90 jours à l’avance.')
+
+    rdv_id = new_rendezvous_id()
+    entry = {
+        'id': rdv_id, 'guild_id': guild.id, 'requester_id': requester_id,
+        'target_id': target_id, 'target_name': target.display_name, 'channel_id': None,
+        'created_at': datetime.now(timezone.utc).isoformat(),
+        'scheduled_at': utc_iso(scheduled), 'status': 'pending',
+        'dm_message_id': None, 'reminder_sent': False,
+    }
+    get_store()[rdv_id] = entry
+    await save_state_immediately()
+    view = RendezVousInviteView(rdv_id)
+    try:
+        message = await target.send(
+            embed=build_embed(
+                '📅 Demande de rendez-vous',
+                (f'<@{requester_id}> souhaite prendre rendez-vous avec toi.\n\n'
+                 f'🕐 Heure : {discord_time(scheduled, "t")}\n'
+                 f'📅 Date : {discord_time(scheduled, "D")}\n\n'
+                 'Es-tu disponible ?'),
+                COLOR_INFO,
+            ),
+            view=view,
+        )
+    except (discord.Forbidden, discord.HTTPException):
+        entry['status'] = 'dm_failed'
+        await save_state_immediately()
+        raise ValueError('René ne peut pas envoyer la demande de rendez-vous en MP.') from None
+    entry['dm_message_id'] = message.id
+    await save_state_immediately()
+    registered_views[rdv_id] = view
+    bot.add_view(view, message_id=message.id)
+    return {'id': rdv_id, 'status': 'pending', 'scheduled_at': entry['scheduled_at'],
+            'recipient': target.display_name, 'message': 'Demande de rendez-vous envoyée en MP.'}
+
+
 async def safe_dm(user_id: int, *, embed: discord.Embed) -> bool:
     try:
         user = bot.get_user(user_id)

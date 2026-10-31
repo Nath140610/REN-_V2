@@ -45,6 +45,7 @@ Dans **Render → Environment**, ajoute :
 | `PANEL_SECRET` | Chaîne aléatoire d'au moins 32 caractères pour signer les sessions (par exemple `python -c "import secrets; print(secrets.token_urlsafe(48))"`). |
 | `NATHGPT_API_KEY` | Ta clé `ngt_...` pour NathGPT. La variable `token` de ton exemple fonctionne aussi. Ne la mets jamais dans le code ni dans le navigateur. |
 | `PANEL_GUILD_ID` | Facultatif : identifiant du seul serveur Discord affiché dans le panel. Recommandé si le bot est présent sur plusieurs serveurs. |
+| `ENABLE_PRESENCE_INTENT` | Facultatif : mets `1` après avoir activé **Presence Intent** dans le portail développeur Discord. Le classement indiquera alors les dernières connexions observées. Sans cette variable, il classe la dernière activité par message ou vocal. |
 | `STATE_SECRET` | Recommandé : clé stable pour la sauvegarde chiffrée dans Discord. Si tu l'ajoutes après une première sauvegarde, René sait relire l'ancienne avec `DISCORD_TOKEN`. |
 | `STATE_SECRET_PREVIOUS` | Seulement pendant une rotation de clé : ancienne valeur de `STATE_SECRET`, utilisée pour lire la sauvegarde avant de la réécrire avec la nouvelle clé. |
 
@@ -55,6 +56,16 @@ Le tableau affiche les membres actuels, les arrivées, départs, messages, temps
 Pour changer `STATE_SECRET` sans perdre la sauvegarde : déploie d'abord cette version du code, mets la nouvelle clé dans `STATE_SECRET` et l'ancienne dans `STATE_SECRET_PREVIOUS` uniquement sur Render. Quand le bot est reconnecté, attends les logs « État persistant rechargé depuis Discord » puis « Sauvegarde chiffrée avec le nouveau STATE_SECRET ». Retire ensuite `STATE_SECRET_PREVIOUS`. Si la sauvegarde est illisible, René refuse maintenant de l'écraser ; corrige les variables avant de poursuivre.
 
 La section **René IA** et la commande Discord `/reneia` (réservée au staff) envoient une question et des statistiques agrégées à `https://nathgpt.onrender.com/v1/chat/completions`, avec le modèle `nathgpt`. La clé reste côté serveur. Le délai maximum de réponse est de 600 secondes. Aucun texte des messages Discord ni code cadeau n'est transmis à NathGPT.
+
+### Nouvelles actions du panel
+
+- **Cadeaux** : cherche le destinataire par nom dans tous les membres du serveur. Quand tu appuies sur **Envoyer**, René envoie un QR en MP au compte Discord `1362876245381091471`. Scanne le QR avec la tablette ou importe son image. Le code cadeau est créé et envoyé seulement après cette vérification. Le QR expire après cinq minutes et ne fonctionne qu'une fois. Le MP de René vers ce compte doit être autorisé.
+- **Présence** : le classement indique les membres vus aujourd'hui, puis il y a 1, 2, 3 jours, etc. Il ne peut connaître les connexions Discord qu'à partir de l'activation de **Presence Intent** dans **Discord Developer Portal → Bot → Privileged Gateway Intents**, puis de `ENABLE_PRESENCE_INTENT=1` sur Render. Sans cette option, le panel affiche clairement la dernière activité observée par message ou vocal. Le bot doit rester connecté pour enregistrer la présence.
+- **Rendez-vous** : choisis un membre et une date sur la tablette. René envoie une demande en MP avec les boutons de réponse existants et programme son rappel. La date doit être entre 10 minutes et 90 jours dans le futur.
+- **Messages privés** : cherche un membre et écris le message. René l'envoie en MP après confirmation. Les mentions sont désactivées.
+- **Réglages** : choisis le statut et l'activité de René, ou reviens au mode automatique. Le bouton de redémarrage sauvegarde les données puis relance le processus du service Render. Les vibrations du panel peuvent être désactivées ; elles dépendent du navigateur et de la tablette.
+
+Les questions à NathGPT sont limitées à 600 caractères. René résume les chiffres dans un seul message utilisateur de moins de 1 800 caractères, au format `/v1/chat/completions` indiqué dans la documentation NathGPT, pour éviter son erreur `HTTP 400 discord_payload_too_long`.
 
 ### Accès depuis une tablette Samsung
 

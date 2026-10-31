@@ -28,10 +28,7 @@ async def on_ready() -> None:
     if not seniority_refresh_loop.is_running():
         seniority_refresh_loop.start()
 
-    await bot.change_presence(
-        status=discord.Status.online,
-        activity=discord.Game(name=random.choice(FUNNY_ACTIVITIES)),
-    )
+    await apply_panel_presence()
 
     if not bot.idle_avatar_applied:
         bot.idle_avatar_applied = True

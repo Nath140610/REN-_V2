@@ -720,6 +720,7 @@ class ReneBot(commands.Bot):
         intents = discord.Intents.default()
         intents.guilds = True
         intents.members = True
+        intents.presences = os.getenv("ENABLE_PRESENCE_INTENT", "").lower() in {"1", "true", "yes"}
         intents.message_content = True
         intents.voice_states = True
         proxy_user = os.getenv("DISCORD_PROXY_USER")
@@ -1235,6 +1236,8 @@ FUNNY_ACTIVITIES = [
 
 
 async def set_task_presence(task_name: str) -> None:
+    if bot.config_data.get('_panel_presence'):
+        return
     async with bot.presence_lock:
         bot.last_task_until = datetime.now(timezone.utc) + timedelta(minutes=5)
         try:
@@ -1250,6 +1253,8 @@ async def set_task_presence(task_name: str) -> None:
 async def funny_presence_loop() -> None:
     if bot.stopping or bot.user is None:
         return
+    if bot.config_data.get('_panel_presence'):
+        return
 
     now = datetime.now(timezone.utc)
     if bot.last_task_until and now < bot.last_task_until:
@@ -1262,6 +1267,21 @@ async def funny_presence_loop() -> None:
         )
     except discord.HTTPException:
         pass
+
+
+async def apply_panel_presence() -> None:
+    setting = bot.config_data.get('_panel_presence')
+    if isinstance(setting, dict) and setting.get('status') in {'online', 'idle', 'dnd', 'invisible'}:
+        text = str(setting.get('text', '')).strip()[:100]
+        await bot.change_presence(
+            status=getattr(discord.Status, setting['status']),
+            activity=discord.Game(name=text) if text else None,
+        )
+    else:
+        await bot.change_presence(
+            status=discord.Status.online,
+            activity=discord.Game(name=random.choice(FUNNY_ACTIVITIES)),
+        )
 
 
 @funny_presence_loop.before_loop

@@ -1,0 +1,31 @@
+.sidebar{overflow-y:auto}
+.panel-form{display:grid;gap:14px;margin-top:18px;max-width:640px}
+.panel-form label{display:block;font-size:12px;font-weight:700;color:#cfc8e7}
+.panel-form input,.panel-form textarea,.panel-form select{display:block;width:100%;margin-top:7px;background:#201c30;color:#f0edfc;border:1px solid #3b344f;border-radius:10px;padding:13px 15px;outline:none}
+.panel-form textarea{resize:vertical}
+.panel-form input:focus,.panel-form textarea:focus,.panel-form select:focus{border-color:#966df2;box-shadow:0 0 0 3px #966df21c}
+.panel-form .button{justify-self:start}
+.member-picker{position:relative}
+.picker-results{position:absolute;z-index:30;top:75px;left:0;right:0;max-height:250px;overflow-y:auto;background:#252039;border:1px solid #554674;border-radius:12px;box-shadow:0 18px 40px #0008}
+.picker-results:empty{display:none}
+.picker-option{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:0;border-bottom:1px solid #403653;background:transparent;color:#f4efff;text-align:left}
+.picker-option:hover,.picker-option:focus{background:#392c56}
+.picker-option img{width:32px;height:32px;border-radius:50%}
+.picker-option small{display:block;color:#a59bb9}
+.picker-selected{min-height:18px;margin-top:6px;font-size:11px;color:#82dfb7}
+.spaced-card{margin-top:18px}
+.presence-row{display:flex;align-items:center;gap:12px;border-top:1px solid #302b40;padding:11px 0}
+.presence-row .rank{font-size:13px;color:#b797ff;width:32px}
+.presence-row .row-main{flex:1}
+.presence-row .presence-age{font-size:11px;color:#a9e2c7;text-align:right}
+.presence-row .presence-age.old{color:#a29ab6}
+.qr-card{width:min(560px,94vw);max-height:92vh;overflow-y:auto}
+.qr-card>img{width:65px;height:65px;object-fit:cover;border-radius:14px}
+.qr-card video{display:block;width:100%;max-height:300px;min-height:180px;margin-top:14px;background:#111;border-radius:12px;object-fit:cover}
+.qr-card p{line-height:1.5;color:#c5bcd8}
+.qr-card #qr-feedback{min-height:24px;color:#a67dff;font-size:12px}
+.upload-qr{display:block;margin:12px 0;color:#cab8f3;font-size:12px}
+.upload-qr input{display:block;width:100%;margin-top:7px}
+.haptic-choice{display:block;margin-top:30px;color:#bdb3d3;font-size:12px}
+.haptic-choice input{vertical-align:middle}
+@media(max-width:700px){.panel-form .button{width:100%}.presence-row .presence-age{max-width:130px}.qr-card{padding:20px}}

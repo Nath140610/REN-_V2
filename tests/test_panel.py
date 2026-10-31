@@ -1,8 +1,9 @@
 import os
+import time
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from rene import analytics, core
+from rene import ai, analytics, core
 from rene import panel
 from rene.panel import install_panel
 
@@ -67,8 +68,74 @@ class AnalyticsTest(unittest.TestCase):
             self.assertEqual(result['users']['456']['voice_seconds'], 120)
             self.assertEqual(result['users']['456']['active_days'], 1)
 
+    def test_presence_ranking_uses_last_observed_connection(self):
+        older = Mock(id=1, bot=False, display_name='Ancien', status=core.discord.Status.offline)
+        recent = Mock(id=2, bot=False, display_name='Récent', status=core.discord.Status.offline)
+        guild = Mock(id=123, members=[older, recent])
+        fake_bot = Mock(intents=Mock(presences=True), config_data={})
+        with patch.object(core, 'bot', fake_bot):
+            analytics.store(123)['last_online'] = {
+                '1': '2026-10-25T09:00:00+00:00',
+                '2': '2026-10-30T09:00:00+00:00',
+            }
+            result = analytics.presence_ranking(guild)
+        self.assertEqual(result['mode'], 'presence')
+        self.assertEqual([item['id'] for item in result['members']], ['2', '1'])
+
+
+class AITest(unittest.TestCase):
+    def test_prompt_fits_nathgpt_discord_limit(self):
+        context = {
+            'guild': {'name': 'Serveur de test'}, 'since': '2026-10-01',
+            'totals_30_days': {'messages': 1200, 'joins': 25},
+            'daily_30_days': [{'date': f'2026-10-{day:02}', 'messages': 50,
+                               'joins': 2, 'leaves': 0, 'voice_seconds': 3000}
+                              for day in range(1, 31)],
+            'top_members_30_days': [{'name': 'Membre très présent ' * 3,
+                                      'messages': 100, 'voice_seconds': 6000}
+                                     for _ in range(12)],
+        }
+        prompt = ai.build_prompt('Résume les tendances du serveur.', context)
+        self.assertLessEqual(len(prompt), 1800)
+        self.assertIn('Résume les tendances', prompt)
+
 
 class PanelActionsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_gift_qr_is_sent_to_owner_and_can_only_be_used_once(self):
+        member = Mock(id=456, bot=False, display_name='Destinataire')
+        guild = Mock(id=123, name='Serveur')
+        guild.get_member.return_value = member
+        owner = Mock()
+        owner.send = AsyncMock()
+        panel.gift_challenges.clear()
+        with patch.object(panel, 'guild_for', return_value=guild), \
+             patch.object(panel.core.bot, 'get_user', return_value=owner) as get_user, \
+             patch.object(panel, 'send_gift', new_callable=AsyncMock,
+                          return_value={'ok': True}) as send_gift:
+            result = await panel.start_gift_challenge('123', '456', 'Merci', 'session-a')
+            get_user.assert_called_once_with(panel.OWNER_DISCORD_ID)
+            owner.send.assert_awaited_once()
+            challenge = panel.gift_challenges[result['challenge_id']]
+            self.assertGreater(challenge['expires_at'], time.time())
+            with self.assertRaises(ValueError):
+                await panel.confirm_gift_challenge('123', result['challenge_id'],
+                                                    'rene-gift:wrong:secret', 'session-a')
+            send_gift.assert_not_awaited()
+            import hashlib
+            secret = 'test-secret'
+            challenge['token_hash'] = hashlib.sha256(secret.encode()).digest()
+            token = f'rene-gift:{result["challenge_id"]}:{secret}'
+            with self.assertRaises(ValueError):
+                await panel.confirm_gift_challenge('123', result['challenge_id'],
+                                                    token, 'session-b')
+            self.assertEqual((await panel.confirm_gift_challenge(
+                '123', result['challenge_id'], token, 'session-a'))['ok'], True)
+            send_gift.assert_awaited_once_with('123', '456', 'Merci')
+            with self.assertRaises(ValueError):
+                await panel.confirm_gift_challenge('123', result['challenge_id'],
+                                                    token, 'session-a')
+        panel.gift_challenges.clear()
+
     async def test_gift_is_reserved_then_delivered(self):
         member = Mock(id=456, bot=False, display_name='Membre')
         member.__str__ = Mock(return_value='Membre')

@@ -11,7 +11,52 @@ def now():
 def store(guild_id):
     return core.bot.config_data.setdefault('_panel_stats', {}).setdefault(str(guild_id), {
         'since': now().isoformat(), 'days': {}, 'audit': [],
+        'last_online': {}, 'last_activity': {},
     })
+
+
+def record_seen(guild_id, member_id, kind, at=None):
+    if kind not in ('last_online', 'last_activity'):
+        return
+    entries = store(guild_id).setdefault(kind, {})
+    at = at or now()
+    previous = entries.get(str(member_id))
+    if previous:
+        try:
+            if (at - datetime.fromisoformat(previous)).total_seconds() < 60:
+                return
+        except (ValueError, TypeError):
+            pass
+    entries[str(member_id)] = at.isoformat()
+
+
+def presence_ranking(guild):
+    data = store(guild.id)
+    exact = core.bot.intents.presences
+    key = 'last_online' if exact else 'last_activity'
+    seen = data.setdefault(key, {})
+    current = now()
+    result = []
+    for member in guild.members:
+        if member.bot:
+            continue
+        stamp = seen.get(str(member.id))
+        online = exact and member.status != core.discord.Status.offline
+        if online:
+            stamp = current.isoformat()
+        try:
+            last = datetime.fromisoformat(stamp) if stamp else None
+        except (ValueError, TypeError):
+            last = None
+        result.append({
+            'id': str(member.id), 'name': member.display_name,
+            'avatar': str(member.display_avatar.url),
+            'last_seen_at': last.isoformat() if last else None,
+            'days_ago': max(0, (current.date() - last.date()).days) if last else None,
+            'online_now': bool(online),
+        })
+    result.sort(key=lambda item: item['last_seen_at'] or '', reverse=True)
+    return {'mode': 'presence' if exact else 'activity', 'members': result}
 
 
 def day(guild_id, at=None):
@@ -32,6 +77,7 @@ def record(guild_id, kind, member_id=None, amount=1, at=None):
     if member_id is not None and kind in ('messages', 'voice_seconds'):
         user = bucket['users'].setdefault(str(member_id), {'messages': 0, 'voice_seconds': 0})
         user[kind] += amount
+        record_seen(guild_id, member_id, 'last_activity', at)
 
 
 def voice_interval(guild_id, member_id, start, end):
