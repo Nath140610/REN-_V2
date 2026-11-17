@@ -145,6 +145,7 @@ class PanelActionsTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(panel, 'guild_for', return_value=guild), \
              patch.object(panel, 'gift_store', return_value=entries), \
              patch.object(panel, 'generate_unique_code', return_value='VOID-ABCD-EFGH-JKLM'), \
+             patch.dict(os.environ, {'PUBLIC_URL': 'https://rene.example'}), \
              patch.object(panel.core, 'save_state_immediately', new_callable=AsyncMock) as save, \
              patch.object(panel, 'send_gift_dm', new_callable=AsyncMock, return_value=True) as dm, \
              patch.object(panel.analytics, 'audit'):

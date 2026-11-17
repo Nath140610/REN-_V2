@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#000000"><meta name="color-scheme" content="dark"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Ta carte cadeau · René</title><link rel="stylesheet" href="/static/gift.css"></head>
+<body>
+<canvas id="flakes" aria-hidden="true"></canvas>
+<main class="stage">
+  <h1 class="title">René t’a laissé une carte.</h1>
+  <div class="card-wrap">
+    <div class="spark" aria-hidden="true"></div>
+    <div class="scene" id="scene" tabindex="0" aria-label="Carte cadeau. Entrée pour la retourner.">
+      <div class="glow" aria-hidden="true"></div>
+      <div class="card" id="card">
+        <div class="face front">
+          <div class="aura"></div><div class="foil"></div>
+          <div class="front-top"><span class="brand">VOIDLOOP’S STUDIO</span><span class="chip"></span></div>
+          <div class="front-main"><div><span class="kicker">Carte cadeau</span><h2>Pour <span id="name">toi</span></h2><p id="guild"></p></div><div class="rene-ring"><img src="/assets/GIFT.png" alt="René" draggable="false"></div></div>
+          <div class="front-bottom"><span>René l’Intérimaire</span><span class="turn-hint">Retourne-moi ↻</span></div>
+          <div class="sheen"></div>
+        </div>
+        <div class="face back">
+          <div class="foil soft"></div><div class="stripe"></div>
+          <p class="back-label">Gratte délicatement la zone argentée</p>
+          <div class="scratch" id="scratch"><div class="code loading" id="code" aria-live="polite"></div><canvas id="foil-canvas" aria-label="Zone à gratter"></canvas></div>
+          <div class="timer" id="timer"><span id="timer-label">Valable 24 h après grattage</span><strong id="timer-value">24:00:00</strong></div>
+          <p class="reason" id="reason"></p>
+          <div class="back-bottom"><span>Code unique · personnel</span><span>VoidLoop’s Studio</span></div>
+          <div class="sheen"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="hint" id="hint">Fais-la tourner, puis retourne-la.</p>
+  <div class="actions"><button id="flip" class="pill ghost" type="button">Retourner</button><button id="copy" class="pill hidden" type="button">Copier le code</button></div>
+  <p class="status" id="status" role="status"></p>
+</main>
+<script src="/static/gift.js" defer></script>
+</body></html>

@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 import os
+import re
 import secrets
 import threading
 import time
@@ -19,7 +20,9 @@ import qrcode
 from rene import ai, analytics, core
 from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
+from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
+from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
 attempts = {}
@@ -138,12 +141,65 @@ async def search_members(guild_id, query):
             'total': len(matches)}
 
 
+GIFT_FIELDS = ('code', 'recipient_id', 'recipient_name', 'reason', 'created_at', 'delivery_status',
+               'card_sent_at', 'opened_at', 'last_seen_at', 'views', 'scratched_at', 'expires_at',
+               'replaced_by', 'replaces')
+
+
 async def gifts(guild_id):
     guild_for(guild_id)
+    now = datetime.now(timezone.utc)
     entries = [entry for entry in gift_store().values() if isinstance(entry, dict) and str(entry.get('guild_id')) == str(guild_id)]
     entries.sort(key=lambda e: e.get('created_at', ''), reverse=True)
-    return {'total': len(entries), 'items': entries[:100],
-            'note': 'René suit la distribution et la livraison en MP. Il ne peut pas vérifier si un code a été utilisé sur Roblox.'}
+    items = []
+    counts = {}
+    for entry in entries:
+        status = giftcodes.card_status(entry, now)
+        counts[status] = counts.get(status, 0) + 1
+        item = {key: entry.get(key) for key in GIFT_FIELDS}
+        item['recipient_id'] = str(item['recipient_id'] or '')
+        item['status'] = status
+        items.append(item)
+    return {'total': len(entries), 'counts': counts, 'items': items[:150],
+            'public_url': bool(giftcodes.public_base_url()),
+            'note': 'Le code s’affiche sur la carte après grattage et reste valable 24 h. René ne peut pas vérifier son utilisation sur Roblox.'}
+
+
+async def replace_legacy_gifts(guild_id):
+    guild = guild_for(guild_id)
+    if not giftcodes.public_base_url():
+        raise ValueError('Ajoute PUBLIC_URL sur Render pour créer les liens des cartes.')
+    result = await giftcodes.replace_legacy_codes(guild)
+    analytics.audit(guild.id, 'gift', f'Anciens codes remplacés : {result["replaced"]}, MP fermés : {result["dm_failed"]}, '
+                                      f'absents : {result["absent"]}, anciens MP supprimés : {result["deleted_messages"]}')
+    message = f'{result["replaced"]} carte(s) envoyée(s), {result["deleted_messages"]} ancien(s) MP supprimé(s).'
+    if result['dm_failed']:
+        message += f' {result["dm_failed"]} MP fermé(s).'
+    if result['absent']:
+        message += f' {result["absent"]} membre(s) parti(s).'
+    return dict(result, ok=True, message=message)
+
+
+async def resend_gift(guild_id, code):
+    guild = guild_for(guild_id)
+    entry = gift_store().get(code)
+    if not isinstance(entry, dict) or str(entry.get('guild_id')) != str(guild.id):
+        raise ValueError('Code introuvable.')
+    if giftcodes.card_status(entry) in {'legacy', 'replaced', 'expired'}:
+        raise ValueError('Cette carte ne peut pas être renvoyée.')
+    if not giftcodes.public_base_url():
+        raise ValueError('Ajoute PUBLIC_URL sur Render pour créer les liens des cartes.')
+    member = guild.get_member(int(entry.get('recipient_id') or 0))
+    if member is None:
+        raise ValueError('Ce membre n’est plus sur le serveur.')
+    delivered = await send_gift_dm(member, code=code, reason=entry.get('reason', ''), guild_name=guild.name)
+    entry['delivery_status'] = 'delivered' if delivered else 'dm_failed'
+    entry['delivery_updated_at'] = datetime.now(timezone.utc).isoformat()
+    await core.save_state_immediately()
+    if not delivered:
+        raise ValueError('Cette personne refuse les MP du bot.')
+    analytics.audit(guild.id, 'gift', f'Carte {code} renvoyée à {member} ({member.id})')
+    return {'ok': True, 'message': f'Carte renvoyée à {member.display_name}.'}
 
 
 async def appointments(guild_id):
@@ -221,6 +277,8 @@ async def send_gift(guild_id, user_id, reason):
     member = guild.get_member(int(user_id))
     if member is None or member.bot:
         raise ValueError('Choisis un membre du serveur.')
+    if not giftcodes.public_base_url():
+        raise ValueError('Ajoute PUBLIC_URL sur Render pour créer le lien de la carte.')
     code = generate_unique_code()
     entry = {'code': code, 'guild_id': guild.id, 'recipient_id': member.id,
              'recipient_name': str(member), 'reason': reason,
@@ -234,7 +292,7 @@ async def send_gift(guild_id, user_id, reason):
     analytics.audit(guild.id, 'gift', f'Code {code} pour {member} ({member.id}) ; MP : {entry["delivery_status"]}')
     await core.save_state_immediately()
     return {'ok': True, 'code': code, 'delivered': delivered,
-            'message': 'Code envoyé en MP.' if delivered else 'Code réservé, mais le MP a échoué.'}
+            'message': 'Carte à gratter envoyée en MP.' if delivered else 'Code réservé, mais le MP a échoué.'}
 
 
 async def start_gift_challenge(guild_id, user_id, reason, session_id):
@@ -589,6 +647,7 @@ def install_panel(app):
     if getattr(app, '_rene_panel_installed', False):
         return
     app._rene_panel_installed = True
+    install_giftcard(app, lambda coro, timeout=20: run(coro, timeout))
 
     @app.after_request
     def security_headers(resp):
@@ -704,6 +763,18 @@ def install_panel(app):
     def list_gifts(guild_id):
         protected()
         return response(lambda: run(gifts(positive_id(guild_id))))
+
+    @app.post('/api/guild/<guild_id>/gifts/replace-legacy')
+    def replace_legacy(guild_id):
+        protected()
+        return response(lambda: run(replace_legacy_gifts(positive_id(guild_id)), 600))
+
+    @app.post('/api/guild/<guild_id>/gifts/<code>/resend')
+    def resend(guild_id, code):
+        protected()
+        if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
+            abort(404)
+        return response(lambda: run(resend_gift(positive_id(guild_id), code), 40))
 
     @app.get('/api/guild/<guild_id>/appointments')
     def list_appointments(guild_id):

@@ -1,0 +1,80 @@
+/* Carte cadeau René — DA « Apple Intelligence » : noir, halo aux moments clés, blanc rosé pour les éclats. */
+:root{
+  --white:#FFF8FF;--blue:#0A84FF;--gray:#8E8E93;--night:#0A1430;--red:#FF6961;
+  --halo-conic:conic-gradient(from 200deg,#286EFF,#965AFF,#FF46AA,#FF5F50,#FFA53C,#BE50FF,#286EFF);
+  --ease:cubic-bezier(.65,0,.35,1);--ease-out:cubic-bezier(.22,1,.36,1);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",system-ui,"Segoe UI",Roboto,sans-serif;
+  color:#F5F5F7;background:#000;color-scheme:dark;-webkit-font-smoothing:antialiased;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#000}
+body{min-height:100svh;overflow-x:hidden;background:radial-gradient(120% 70% at 50% 115%,var(--night),#000 62%)}
+#flakes{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:20}
+.hidden{display:none!important}
+.stage{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:36px 18px calc(30px + env(safe-area-inset-bottom))}
+.title{margin:0 0 10px;font-size:clamp(22px,4.5vw,30px);font-weight:700;letter-spacing:-.022em;text-align:center;opacity:0;animation:rise 1s var(--ease-out) 1.2s forwards}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* HELLO : un point blanc s’éveille puis la carte apparaît */
+.card-wrap{position:relative;width:min(440px,88vw);aspect-ratio:1.586}
+.spark{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px;border-radius:50%;background:var(--white);box-shadow:0 0 18px 6px var(--white);opacity:0;z-index:5;pointer-events:none;animation:spark 1.4s var(--ease) .1s forwards}
+@keyframes spark{0%{opacity:0;transform:scale(.2)}30%{opacity:1;transform:scale(1.25)}55%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(18)}}
+
+.scene{position:absolute;inset:0;perspective:1400px;container-type:inline-size;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;outline:none;opacity:0;transform:translateY(26px) scale(.96);transition:opacity 1.1s var(--ease-out),transform 1.3s var(--ease-out)}
+.scene.ready{opacity:1;transform:none}
+.scene.grabbing{cursor:grabbing}
+.glow{position:absolute;inset:-12%;border-radius:42%;background:var(--halo-conic);filter:blur(60px);opacity:0;z-index:-1;pointer-events:none;transition:opacity 1.4s var(--ease),transform 1.4s var(--ease)}
+.scene.ready .glow{opacity:.36;animation:breathe 5.5s var(--ease) 1.4s infinite}
+@keyframes breathe{0%,100%{opacity:.28;transform:scale(.97)}50%{opacity:.5;transform:scale(1.03)}}
+/* Avant le moment fort : le noir, puis l’éclat */
+.scene.dim .glow{animation:none;opacity:.04;transition:opacity .22s var(--ease)}
+.scene.burst .glow{animation:none;opacity:.95;transform:scale(1.08);transition:opacity .35s var(--ease-out),transform .6s var(--ease-out)}
+
+.card{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+.face{position:absolute;inset:0;border-radius:4.4cqw;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:0 30px 70px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.09)}
+.front{background:linear-gradient(150deg,#17141f 0%,#0b0b10 55%,#100d19 100%)}
+.back{transform:rotateY(180deg);background:linear-gradient(160deg,#131318,#09090c)}
+.aura{position:absolute;width:85%;aspect-ratio:1;right:-28%;bottom:-58%;border-radius:50%;background:var(--halo-conic);filter:blur(7cqw);opacity:.72}
+.foil{position:absolute;inset:0;background:linear-gradient(115deg,transparent 34%,rgba(40,110,255,.22) 42%,rgba(150,90,255,.2) 46%,rgba(255,70,170,.22) 50%,rgba(255,165,60,.18) 55%,transparent 63%);background-size:260% 100%;background-position:var(--shift,50%) 0;mix-blend-mode:screen;pointer-events:none}
+.foil.soft{opacity:.45}
+.sheen{position:absolute;inset:0;background:radial-gradient(circle at var(--mx,50%) var(--my,30%),rgba(255,248,255,.3),transparent 44%);mix-blend-mode:soft-light;pointer-events:none}
+
+.front-top{position:absolute;top:6.5cqw;left:7cqw;right:7cqw;display:flex;justify-content:space-between;align-items:center}
+.brand{font-size:2.5cqw;font-weight:600;letter-spacing:.2em;color:rgba(245,245,247,.72)}
+.chip{width:9.5cqw;height:7cqw;border-radius:1.6cqw;background:linear-gradient(135deg,#fff8ff,#bdb6c9 45%,#f2ecf7 62%,#9d96aa);box-shadow:inset 0 0 0 .3cqw rgba(0,0,0,.18)}
+.front-main{position:absolute;left:7cqw;right:7cqw;top:21cqw;display:flex;align-items:center;justify-content:space-between;gap:4cqw}
+.kicker{display:block;font-size:2.8cqw;color:var(--gray);font-weight:500}
+.front h2{margin:1cqw 0 0;font-size:7.2cqw;font-weight:700;letter-spacing:-.025em;line-height:1.05;overflow-wrap:anywhere}
+.front-main p{margin:1.4cqw 0 0;font-size:2.8cqw;color:var(--gray)}
+.rene-ring{flex:none;width:23cqw;aspect-ratio:1;border-radius:50%;padding:.7cqw;background:var(--halo-conic)}
+.rene-ring img{display:block;width:100%;height:100%;object-fit:cover;border-radius:50%;border:.7cqw solid #0b0b10;pointer-events:none}
+.front-bottom{position:absolute;left:7cqw;right:7cqw;bottom:6cqw;display:flex;justify-content:space-between;font-size:2.6cqw;color:rgba(245,245,247,.55)}
+.turn-hint{color:var(--white)}
+
+.stripe{position:absolute;left:0;right:0;top:6.5cqw;height:10.5cqw;background:linear-gradient(180deg,#1e1e24,#050507 40%,#16161b)}
+.back-label{position:absolute;top:20.5cqw;left:0;right:0;margin:0;text-align:center;font-size:2.6cqw;color:var(--gray)}
+.scratch{position:absolute;left:11%;right:11%;top:26cqw;height:14.5cqw;border-radius:2cqw;background:#050507;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);overflow:hidden;display:grid;place-items:center}
+.code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:5.1cqw;font-weight:600;letter-spacing:.08em;color:var(--white);white-space:nowrap;user-select:text;-webkit-user-select:text}
+.code.loading::after{content:"• • •";color:var(--gray);letter-spacing:.3em;animation:pulse 1.6s var(--ease) infinite}
+@keyframes pulse{50%{opacity:.35}}
+.code.expired{color:var(--red);font-family:inherit;letter-spacing:0}
+#foil-canvas{position:absolute;inset:0;width:100%;height:100%;transition:opacity .8s var(--ease);
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fff8ff'/%3E%3Cstop offset='1' stop-color='%23a9a3b8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='11' fill='url(%23g)' stroke='%23286EFF' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='6' fill='none' stroke='%23965AFF' stroke-opacity='.6'/%3E%3C/svg%3E") 16 16,crosshair}
+.scratch.revealed .code{animation:reveal .9s var(--ease-out);text-shadow:0 0 2.4cqw rgba(150,90,255,.55)}
+.scratch.revealed::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,248,255,.85) 50%,transparent 70%);transform:translateX(-120%);animation:sweep 1.1s var(--ease) .1s forwards;pointer-events:none}
+.scratch.done .code{text-shadow:0 0 2.4cqw rgba(150,90,255,.45)}
+@keyframes reveal{from{opacity:.4;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes sweep{to{transform:translateX(120%)}}
+.timer{position:absolute;top:43cqw;left:11%;right:11%;display:flex;justify-content:space-between;align-items:baseline;font-size:2.7cqw;color:var(--gray)}
+.timer strong{font-variant-numeric:tabular-nums;color:#F5F5F7;font-size:3.4cqw;font-weight:600}
+.timer.expired strong{color:var(--red)}
+.reason{position:absolute;top:49.5cqw;left:11%;right:11%;margin:0;font-size:2.7cqw;color:rgba(245,245,247,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.back-bottom{position:absolute;left:7cqw;right:7cqw;bottom:4.6cqw;display:flex;justify-content:space-between;font-size:2.2cqw;color:rgba(245,245,247,.38)}
+
+.hint{margin:6px 0 0;min-height:20px;color:var(--gray);font-size:15px;text-align:center;transition:opacity .4s var(--ease)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.pill{border:0;border-radius:999px;padding:11px 22px;font:inherit;font-size:15px;font-weight:600;background:var(--blue);color:#fff;cursor:pointer;transition:transform .25s var(--ease),background .25s var(--ease)}
+.pill:active{transform:scale(.97)}
+.pill.ghost{background:#1C1C1E;color:var(--blue)}
+.status{min-height:18px;margin:0;color:var(--red);font-size:14px;text-align:center}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

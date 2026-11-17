@@ -281,3 +281,77 @@ function refreshTicketBadge() {
 }
 setInterval(() => { if (!document.hidden) refreshTicketBadge(); }, 90000);
 setTimeout(refreshTicketBadge, 4000);
+
+/* ---------- Cartes cadeau à gratter ---------- */
+
+const GIFT_LABELS = {sent:'Pas ouverte', opened:'Ouverte', scratched:'Grattée', expired:'Expirée',
+                     replaced:'Remplacé', legacy:'Ancien code', dm_failed:'MP fermé'};
+const GIFT_TONE = {sent:'idle', opened:'blue', scratched:'', expired:'fail', replaced:'idle', legacy:'warn', dm_failed:'fail'};
+
+function remainingText(expiresAt) {
+  const left = Math.max(0, new Date(expiresAt).getTime() - Date.now());
+  const hours = Math.floor(left / 3600000), minutes = Math.floor(left / 60000) % 60;
+  return hours ? `${hours} h ${String(minutes).padStart(2, '0')}` : `${minutes} min`;
+}
+
+function giftRow(entry) {
+  const row = el('div', 'list-row');
+  row.append(el('span', 'audit-icon', entry.status === 'scratched' ? '✦' : '◇'));
+  const main = el('div', 'row-main');
+  const detail = [entry.recipient_name, entry.reason];
+  if (entry.scratched_at) detail.push(`grattée le ${new Date(entry.scratched_at).toLocaleString('fr-FR', {dateStyle:'short', timeStyle:'short'})}`);
+  else if (entry.opened_at) detail.push(`ouverte ${entry.views || 1}×`);
+  else detail.push(date(entry.created_at));
+  main.append(el('strong', 'gift-code', entry.code), el('small', '', detail.filter(Boolean).join(' · ')));
+  row.append(main);
+  const label = entry.status === 'scratched' ? `Grattée · ${remainingText(entry.expires_at)}` : GIFT_LABELS[entry.status] || entry.status;
+  const pill = el('span', `pill ${GIFT_TONE[entry.status] || ''}`, label);
+  if (entry.status === 'scratched') pill.dataset.expires = entry.expires_at;
+  row.append(pill);
+  if (['sent', 'opened', 'dm_failed'].includes(entry.status)) {
+    const resend = Object.assign(el('button', 'mini', 'Renvoyer'), {type: 'button'});
+    resend.onclick = async () => {
+      if (!window.confirm(`Renvoyer la carte à ${entry.recipient_name} ? L’ancien MP sera supprimé.`)) return;
+      if (await withButton(resend, () => post(`/api/guild/${state.guild}/gifts/${entry.code}/resend`))) await loadGifts();
+    };
+    row.append(resend);
+  }
+  return row;
+}
+
+async function loadGifts() {
+  const data = await api(`/api/guild/${state.guild}/gifts`);
+  const c = data.counts || {};
+  const active = (c.sent || 0) + (c.opened || 0) + (c.scratched || 0) + (c.expired || 0) + (c.dm_failed || 0);
+  $('#gift-stats').replaceChildren(
+    metric('Cartes envoyées', fmt(active), 'avec un lien unique', '◇'),
+    metric('Ouvertes', fmt((c.opened || 0) + (c.scratched || 0) + (c.expired || 0)), 'au moins une fois', '◎'),
+    metric('Grattées', fmt((c.scratched || 0) + (c.expired || 0)), `${fmt(c.scratched || 0)} encore valables`, '✦'),
+    metric('Expirées', fmt(c.expired || 0), 'après 24 h', '⏳'),
+  );
+  const legacy = c.legacy || 0;
+  $('#gift-legacy').classList.toggle('hidden', !legacy);
+  $('#gift-legacy-title').textContent = `${fmt(legacy)} ancien(s) code(s) envoyé(s) en clair`;
+  $('#gift-count').textContent = `· ${fmt(data.total)}`;
+  $('#gift-note').textContent = data.public_url ? data.note : 'PUBLIC_URL manquant : René ne peut pas créer les liens des cartes.';
+  const host = $('#gift-list');
+  host.replaceChildren(...data.items.map(giftRow));
+  if (!data.items.length) empty(host, 'Aucune carte envoyée.');
+}
+
+$('#gift-legacy-run').onclick = async () => {
+  const button = $('#gift-legacy-run');
+  if (!window.confirm('Envoyer une carte à gratter à chaque ancien gagnant ? Chacun reçoit un nouveau code, l’ancien est désactivé et son MP supprimé.')) return;
+  button.textContent = 'Envoi en cours…';
+  const result = await withButton(button, () => post(`/api/guild/${state.guild}/gifts/replace-legacy`));
+  button.textContent = 'Remplacer';
+  if (result) await loadGifts();
+};
+
+setInterval(() => {
+  for (const pill of document.querySelectorAll('#gift-list [data-expires]')) {
+    const left = new Date(pill.dataset.expires).getTime() - Date.now();
+    pill.textContent = left > 0 ? `Grattée · ${remainingText(pill.dataset.expires)}` : 'Expirée';
+    if (left <= 0) { pill.classList.add('fail'); delete pill.dataset.expires; }
+  }
+}, 30000);
