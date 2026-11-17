@@ -15,8 +15,8 @@ function navigate(view) {
   state.view = view;
   for (const node of document.querySelectorAll('.view')) node.classList.toggle('hidden', node.id !== `view-${view}`);
   for (const node of document.querySelectorAll('.nav')) node.classList.toggle('active', node.dataset.view === view);
-  const names = {overview:"Vue d'ensemble", members:'Membres', gifts:'Codes cadeau', presence:'Présence', appointments:'Rendez-vous', messages:'Messages privés', settings:'Réglages', ai:'René IA'};
-  const subtitles = {overview:'Les chiffres du serveur, mis à jour par René.', members:'Retrouve les personnes du serveur et gère la modération.', gifts:'Envoie et retrouve les codes distribués.', presence:'Classement selon la dernière présence observée.', appointments:'Programme et suis les rendez-vous.', messages:'Envoie un courrier privé à un membre.', settings:'Contrôle le statut et le service de René.', ai:'Une analyse claire de tes statistiques Discord.'};
+  const names = {overview:'Vue d’ensemble', members:'Membres', tickets:'Tickets', appointments:'Rendez-vous', moderation:'Sanctions', messages:'Parler en René', gifts:'Cadeaux', presence:'Présence', settings:'Réglages', ai:'René IA'};
+  const subtitles = {overview:'Le serveur en un coup d’œil.', members:'Touche un membre pour agir.', tickets:'Les questions des membres.', appointments:'Planifie, puis note qui est venu.', moderation:'Les bannissements en cours.', messages:'René parle pour toi.', gifts:'Un code unique, livré en MP.', presence:'Qui est passé récemment.', settings:'Statut et service.', ai:'Une question, une réponse.'};
   $('#page-title').textContent = names[view] || view;
   $('#crumb').textContent = names[view] || view;
   $('#page-subtitle').textContent = subtitles[view] || '';
@@ -34,6 +34,9 @@ async function refresh() {
     if (state.view === 'presence') await loadPresence();
     if (state.view === 'appointments') await loadAppointments();
     if (state.view === 'settings') await loadSettings();
+    if (state.view === 'tickets') await loadTickets();
+    if (state.view === 'moderation') await loadTempBans();
+    if (state.view === 'messages') await loadChannels();
   } catch (error) { notice(error.message, true); haptic([35, 35, 35]); }
 }
 
@@ -42,7 +45,7 @@ function selectPicker(kind, member) {
   if (!root) return;
   root.querySelector('input[type=search]').value = member.name;
   root.querySelector('input[name=user_id]').value = member.id;
-  root.querySelector('.picker-selected').textContent = `Sélection : ${member.name}`;
+  root.querySelector('.picker-selected').textContent = `✓ ${member.name}`;
   root.querySelector('.picker-results').replaceChildren();
   haptic([12, 30, 12]);
 }
@@ -93,7 +96,7 @@ for (const root of document.querySelectorAll('[data-picker]')) {
 
 const originalGuildChange = $('#guild-select').onchange;
 $('#guild-select').onchange = () => {
-  for (const kind of ['gift', 'appointment', 'dm']) resetPicker(kind);
+  for (const kind of ['gift', 'appointment', 'dm', 'express']) resetPicker(kind);
   originalGuildChange();
 };
 
@@ -226,19 +229,42 @@ async function loadPresence() {
   if (!data.members.length) empty(host, 'Aucun membre à classer.');
 }
 
+const APPOINTMENT_LABELS = {pending:'En attente', accepted:'Accepté', accepted_now:'Arrive', accepted_5:'Dans 5 min', accepted_10:'Dans 10 min', declined:'Refusé', expired:'Passé', dm_failed:'MP fermé', no_show:'Pas venu'};
+const NO_SHOW_ALLOWED = new Set(['pending', 'accepted', 'accepted_now', 'accepted_5', 'accepted_10', 'expired']);
+
+function appointmentRow(item, kind) {
+  const row = el('div', 'list-row');
+  const main = el('div', 'row-main');
+  const when = kind === 'express'
+    ? `Express · ${new Date(item.created_at).toLocaleString('fr-FR', {dateStyle:'medium', timeStyle:'short'})}`
+    : new Date(item.scheduled_at).toLocaleString('fr-FR', {dateStyle:'full', timeStyle:'short'});
+  main.append(el('strong', '', item.target_name || `Membre ${item.target_id}`), el('small', '', when));
+  const bad = ['dm_failed', 'declined', 'no_show'].includes(item.status);
+  row.append(el('span', `audit-icon ${kind === 'express' ? 'blue' : ''}`, kind === 'express' ? '⚡' : '▣'), main,
+             el('span', `pill ${bad ? 'fail' : ''}`, APPOINTMENT_LABELS[item.status] || item.status));
+  if (NO_SHOW_ALLOWED.has(item.status)) {
+    const button = el('button', 'mini ban', 'Pas venu');
+    button.type = 'button';
+    button.onclick = async () => {
+      if (!window.confirm(`Noter que ${item.target_name || 'ce membre'} n’est pas venu ?`)) return;
+      button.disabled = true;
+      try {
+        const result = await api(`/api/guild/${state.guild}/appointments/${kind}/${item.id}/no-show`, {method:'POST', body:'{}'});
+        notice(result.message); haptic([20, 30, 20]); await loadAppointments();
+      } catch (error) { notice(error.message, true); haptic([35, 35, 35]); button.disabled = false; }
+    };
+    row.append(button);
+  }
+  return row;
+}
+
 async function loadAppointments() {
   const data = await api(`/api/guild/${state.guild}/appointments`);
   const host = $('#appointment-list');
-  host.replaceChildren();
-  const labels = {pending:'En attente', accepted:'Accepté', declined:'Refusé', expired:'Expiré', dm_failed:'MP échoué'};
-  for (const item of data.items) {
-    const row = el('div', 'gift-row');
-    const main = el('div', 'row-main');
-    main.append(el('strong', '', item.target_name || `Membre ${item.target_id}`), el('small', '', new Date(item.scheduled_at).toLocaleString('fr-FR', {dateStyle:'full', timeStyle:'short'})));
-    row.append(el('span', 'audit-icon', '▣'), main, el('span', `pill ${item.status === 'dm_failed' || item.status === 'declined' ? 'fail' : ''}`, labels[item.status] || item.status));
-    host.append(row);
-  }
-  if (!data.items.length) empty(host, 'Aucun rendez-vous programmé.');
+  const rows = [...(data.express || []).map(item => appointmentRow(item, 'express')),
+                ...data.items.map(item => appointmentRow(item, 'rdv'))];
+  host.replaceChildren(...rows);
+  if (!rows.length) empty(host, 'Aucun rendez-vous.');
 }
 
 $('#appointment-form').onsubmit = async event => {

@@ -252,6 +252,55 @@ class ExpressView(discord.ui.View):
         schedule(self.request_id)
 
 
+async def create_express(guild_id: int, requester_id: int, target: discord.Member) -> dict:
+    """Crée une demande express et envoie le MP. Utilisé par la commande et le panel."""
+    request_id = uuid.uuid4().hex[:10].upper()
+    entry = {
+        "id": request_id,
+        "guild_id": guild_id,
+        "requester_id": requester_id,
+        "target_id": target.id,
+        "target_name": target.display_name,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "pending",
+        "dm_message_id": None,
+        "reminder_sent": False,
+    }
+    store()[request_id] = entry
+    await save_state_immediately()
+
+    view = ExpressView(request_id)
+    message = await safe_dm(
+        target.id,
+        build_embed(
+            "⚡ Rendez-vous express",
+            (
+                f"<@{requester_id}> souhaite te parler rapidement.\n\n"
+                "Quand es-tu disponible ?"
+            ),
+            COLOR_INFO,
+        ),
+        view=view,
+    )
+
+    if message is None:
+        entry["status"] = "dm_failed"
+        await save_state_immediately()
+        return entry
+
+    entry["dm_message_id"] = message.id
+    await save_state_immediately()
+    bot.add_view(view, message_id=message.id)
+    views[request_id] = view
+    return entry
+
+
+def cancel(request_id: str) -> None:
+    task = tasks.pop(request_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
 @app_commands.command(
     name="rdvexpress",
     description="Demander rapidement à quelqu'un s'il est disponible.",
@@ -276,48 +325,14 @@ async def rdvexpress_command(
         )
         return
 
-    request_id = uuid.uuid4().hex[:10].upper()
-    entry = {
-        "id": request_id,
-        "guild_id": interaction.guild_id,
-        "requester_id": interaction.user.id,
-        "target_id": membre.id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "pending",
-        "dm_message_id": None,
-        "reminder_sent": False,
-    }
-    store()[request_id] = entry
-    await save_state_immediately()
+    entry = await create_express(interaction.guild_id, interaction.user.id, membre)
 
-    view = ExpressView(request_id)
-    message = await safe_dm(
-        membre.id,
-        build_embed(
-            "⚡ Rendez-vous express",
-            (
-                f"<@{interaction.user.id}> souhaite te parler rapidement.\n\n"
-                "Quand es-tu disponible ?"
-            ),
-            COLOR_INFO,
-        ),
-        view=view,
-    )
-
-    if message is None:
-        entry["status"] = "dm_failed"
-        await save_state_immediately()
+    if entry["status"] == "dm_failed":
         await interaction.response.send_message(
             f"📪 René ne peut pas envoyer de MP à {membre.mention}.",
             ephemeral=True,
         )
         return
-
-    entry["dm_message_id"] = message.id
-    await save_state_immediately()
-
-    bot.add_view(view, message_id=message.id)
-    views[request_id] = view
 
     await interaction.response.send_message(
         f"📨 René a demandé à {membre.mention} s'il est disponible.",

@@ -1,7 +1,7 @@
 """Panel Render. Toutes les lectures Discord passent par la boucle du bot."""
 import asyncio
 from concurrent.futures import TimeoutError as FutureTimeout
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import io
@@ -17,6 +17,7 @@ import discord
 import qrcode
 
 from rene import ai, analytics, core
+from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
 
@@ -95,7 +96,8 @@ def member_json(member, stats=None):
             'voice_seconds': round(stats.get('voice_seconds', 0)),
             'active_days': stats.get('active_days', 0),
             'warnings': core.get_warning_count(member.guild.id, member.id),
-            'bot': member.bot}
+            'bot': member.bot,
+            'roles': [str(role.id) for role in member.roles if not role.is_default()]}
 
 
 async def snapshot(guild_id):
@@ -145,11 +147,17 @@ async def gifts(guild_id):
 
 
 async def appointments(guild_id):
-    guild_for(guild_id)
+    guild = guild_for(guild_id)
     entries = [entry for entry in rdv.get_store().values()
                if isinstance(entry, dict) and str(entry.get('guild_id')) == str(guild_id)]
     entries.sort(key=lambda entry: entry.get('scheduled_at', ''), reverse=True)
-    return {'items': entries[:100]}
+    express = []
+    for entry in rdvexpress.store().values():
+        if isinstance(entry, dict) and str(entry.get('guild_id')) == str(guild_id):
+            target = guild.get_member(int(entry.get('target_id') or 0))
+            express.append(dict(entry, target_name=entry.get('target_name') or (target.display_name if target else None)))
+    express.sort(key=lambda entry: entry.get('created_at', ''), reverse=True)
+    return {'items': entries[:100], 'express': express[:50]}
 
 
 async def schedule_appointment(guild_id, user_id, scheduled_at):
@@ -291,6 +299,260 @@ async def confirm_gift_challenge(guild_id, challenge_id, qr_text, session_id):
     # un deuxième code cadeau, même si Discord répond lentement.
     gift_challenges.pop(challenge_id, None)
     return await send_gift(guild_id, challenge['user_id'], challenge['reason'])
+
+
+def moderatable(guild, user_id):
+    member = guild.get_member(int(user_id))
+    if member is None or member.bot or member.id == guild.owner_id:
+        raise ValueError('Membre introuvable ou non autorisé.')
+    return member
+
+
+def staff_channel_id(guild):
+    value = core.bot.get_guild_config(guild.id).get('staff_records_channel_id')
+    return int(value) if value else 0
+
+
+async def soft_dm(member, title, description, color):
+    try:
+        await member.send(embed=core.build_embed(title, description, color),
+                          allowed_mentions=discord.AllowedMentions.none())
+        return True
+    except (discord.Forbidden, discord.HTTPException):
+        return False
+
+
+async def apply_temp_ban(guild, member, reason, hours):
+    me = guild.me
+    if me is None or not me.guild_permissions.ban_members or member.top_role >= me.top_role:
+        raise ValueError('René n’a pas la permission ou le rang nécessaire pour bannir ce membre.')
+    unban_at = datetime.now(timezone.utc) + timedelta(hours=hours)
+    label = f'{hours} h' if hours < 48 else f'{round(hours / 24)} jours'
+    await soft_dm(member, '⏳ Bannissement temporaire',
+                  f'Tu es banni de **{guild.name}** pendant **{label}**.\n\n'
+                  f'📝 **Motif :** {reason}\nTu pourras revenir <t:{int(unban_at.timestamp())}:R>.',
+                  core.COLOR_DANGER)
+    await member.ban(reason=f'Panel René ({label}) : {reason}', delete_message_seconds=0)
+    core.register_temporary_ban(guild.id, member.id, unban_at)
+    case = core.create_case(guild.id, member.id, OWNER_DISCORD_ID, case_type='Bannissement temporaire',
+                            reason=f'Panel René ({label}) : {reason}',
+                            warning_count=core.get_warning_count(guild.id, member.id),
+                            channel_id=staff_channel_id(guild),
+                            deleted_content='Aucun message supprimé — action du panel.')
+    await core.send_case_to_staff(guild, case)
+    analytics.audit(guild.id, 'tempban', f'{member} ({member.id}) banni {label} : {reason}')
+    return label
+
+
+async def warn_member(guild_id, user_id, reason):
+    guild = guild_for(guild_id)
+    member = moderatable(guild, user_id)
+    count = min(core.get_warning_count(guild.id, member.id) + 1, core.MAX_WARNINGS)
+    core.set_warning_count(guild.id, member.id, count)
+    case = core.create_case(guild.id, member.id, OWNER_DISCORD_ID, case_type='Avertissement',
+                            reason=f'Panel René : {reason}', warning_count=count,
+                            channel_id=staff_channel_id(guild),
+                            deleted_content='Aucun message supprimé — avertissement du panel.')
+    await core.send_case_to_staff(guild, case)
+    delivered = await soft_dm(member, '⚠️ Avertissement',
+                              f'Tu as reçu un avertissement sur **{guild.name}**.\n\n'
+                              f'📝 **Motif :** {reason}\n'
+                              f'📂 **Total :** {count}/{core.MAX_WARNINGS}',
+                              core.COLOR_WARNING)
+    analytics.audit(guild.id, 'warn', f'{member} ({member.id}) : {count}/{core.MAX_WARNINGS} — {reason}')
+    message = f'{member.display_name} : {count}/{core.MAX_WARNINGS} avertissements.'
+    if count >= core.MAX_WARNINGS:
+        try:
+            await apply_temp_ban(guild, member, f'{core.MAX_WARNINGS} avertissements atteints', 24)
+            core.set_warning_count(guild.id, member.id, 0)
+            message += ' Limite atteinte : banni 24 h.'
+        except ValueError as error:
+            message += f' Limite atteinte, mais {error}'
+    elif not delivered:
+        message += ' MP fermé.'
+    await core.save_state_immediately()
+    return {'ok': True, 'count': count, 'message': message}
+
+
+async def temp_ban_member(guild_id, user_id, reason, hours):
+    guild = guild_for(guild_id)
+    member = moderatable(guild, user_id)
+    label = await apply_temp_ban(guild, member, reason, hours)
+    await core.save_state_immediately()
+    return {'ok': True, 'message': f'{member.display_name} est banni pour {label}.'}
+
+
+async def temp_bans(guild_id):
+    guild = guild_for(guild_id)
+    items = []
+    for user_id, until in core.bot.temporary_bans.get(str(guild.id), {}).items():
+        user = core.bot.get_user(int(user_id))
+        items.append({'id': str(user_id), 'name': user.display_name if user else f'Membre {user_id}',
+                      'avatar': str(user.display_avatar.url) if user else None, 'until': until})
+    items.sort(key=lambda item: item['until'])
+    return {'items': items}
+
+
+async def lift_temp_ban(guild_id, user_id):
+    guild = guild_for(guild_id)
+    try:
+        await guild.unban(discord.Object(id=int(user_id)), reason='Levé depuis le panel René')
+    except discord.NotFound:
+        pass
+    core.remove_temporary_ban(guild.id, int(user_id))
+    analytics.audit(guild.id, 'unban', f'Bannissement levé pour {user_id}')
+    await core.save_state_immediately()
+    return {'ok': True, 'message': 'Bannissement levé.'}
+
+
+async def guild_roles(guild_id):
+    guild = guild_for(guild_id)
+    me = guild.me
+    can_manage = bool(me and me.guild_permissions.manage_roles)
+    roles = [role for role in guild.roles if not role.is_default()]
+    roles.sort(key=lambda role: role.position, reverse=True)
+    return {'items': [{'id': str(role.id), 'name': role.name,
+                       'color': f'#{role.color.value:06x}' if role.color.value else None,
+                       'members': len(role.members),
+                       'editable': can_manage and not role.managed and role < me.top_role}
+                      for role in roles]}
+
+
+async def set_member_role(guild_id, user_id, role_id, enabled):
+    guild = guild_for(guild_id)
+    member = guild.get_member(int(user_id))
+    role = guild.get_role(int(role_id))
+    if member is None or member.bot or role is None or role.is_default():
+        raise ValueError('Membre ou rôle introuvable.')
+    me = guild.me
+    if me is None or not me.guild_permissions.manage_roles or role.managed or role >= me.top_role:
+        raise ValueError('René ne peut pas gérer ce rôle. Place son rôle plus haut.')
+    if enabled:
+        await member.add_roles(role, reason='Panel René')
+    else:
+        await member.remove_roles(role, reason='Panel René')
+    verb = 'ajouté à' if enabled else 'retiré de'
+    analytics.audit(guild.id, 'role', f'Rôle {role.name} {verb} {member} ({member.id})')
+    return {'ok': True, 'roles': [str(r.id) for r in member.roles if not r.is_default()],
+            'message': f'{role.name} {verb} {member.display_name}.'}
+
+
+async def launch_express(guild_id, user_id):
+    guild = guild_for(guild_id)
+    member = guild.get_member(int(user_id))
+    if member is None or member.bot or member.id == OWNER_DISCORD_ID:
+        raise ValueError('Choisis une autre personne du serveur.')
+    entry = await rdvexpress.create_express(guild.id, OWNER_DISCORD_ID, member)
+    if entry['status'] == 'dm_failed':
+        raise ValueError('Cette personne refuse les MP du bot.')
+    analytics.audit(guild.id, 'express', f'RDV express {entry["id"]} pour {member} ({member.id})')
+    return {'ok': True, 'id': entry['id'], 'message': f'Demande express envoyée à {member.display_name}.'}
+
+
+NO_SHOW_ALLOWED = {'pending', 'accepted', 'accepted_now', 'accepted_5', 'accepted_10', 'expired'}
+
+
+async def mark_no_show(guild_id, kind, entry_id):
+    guild = guild_for(guild_id)
+    source = rdv.get_store() if kind == 'rdv' else rdvexpress.store()
+    entry = source.get(entry_id)
+    if not isinstance(entry, dict) or str(entry.get('guild_id')) != str(guild.id):
+        raise ValueError('Rendez-vous introuvable.')
+    if entry.get('status') not in NO_SHOW_ALLOWED:
+        raise ValueError('Ce rendez-vous est déjà clos.')
+    entry['status'] = 'no_show'
+    entry['no_show_at'] = datetime.now(timezone.utc).isoformat()
+    (rdv.cancel_reminder if kind == 'rdv' else rdvexpress.cancel)(entry_id)
+    name = entry.get('target_name') or f'Membre {entry.get("target_id")}'
+    analytics.audit(guild.id, 'no_show', f'{name} n’est pas venu ({entry_id})')
+    await core.save_state_immediately()
+    return {'ok': True, 'message': f'Absence de {name} notée.'}
+
+
+def question_json(guild, question_id, question):
+    author = guild.get_member(int(question.get('author_id') or 0))
+    answered_by = question.get('answered_by')
+    if answered_by and core.bot.user and int(answered_by) == core.bot.user.id:
+        responder = 'René'
+    elif answered_by:
+        staff = guild.get_member(int(answered_by))
+        responder = staff.display_name if staff else 'Staff'
+    else:
+        responder = None
+    return {'id': str(question_id), 'author': author.display_name if author else f'Membre {question.get("author_id")}',
+            'avatar': str(author.display_avatar.url) if author else None,
+            'content': question.get('content', ''), 'created_at': question.get('created_at'),
+            'answered': bool(question.get('answered')), 'answer': question.get('answer'),
+            'answered_by': responder, 'answered_at': question.get('answered_at'),
+            'closed': bool(question.get('closed')),
+            'url': f'https://discord.com/channels/{guild.id}/{question.get("channel_id")}/{question.get("question_message_id")}'}
+
+
+async def tickets(guild_id):
+    guild = guild_for(guild_id)
+    entries = core.bot.questions.get(str(guild.id), {})
+    items = [question_json(guild, qid, q) for qid, q in entries.items() if isinstance(q, dict)]
+    open_items = sorted([i for i in items if not i['answered']], key=lambda i: i['created_at'] or '')
+    done = sorted([i for i in items if i['answered']], key=lambda i: i['answered_at'] or '', reverse=True)
+    return {'open': len(open_items), 'items': (open_items + done)[:100]}
+
+
+async def answer_ticket(guild_id, question_id, text, close_only=False):
+    guild = guild_for(guild_id)
+    lock = core.bot.question_locks.setdefault((guild.id, question_id), asyncio.Lock())
+    async with lock:
+        question = core.bot.questions.get(str(guild.id), {}).get(question_id)
+        if not isinstance(question, dict):
+            raise ValueError('Ticket introuvable.')
+        if question.get('answered'):
+            raise ValueError('Ce ticket a déjà une réponse.')
+        delivery = 'Ticket clos sans réponse.'
+        if not close_only:
+            try:
+                user = core.bot.get_user(int(question['author_id'])) or await core.bot.fetch_user(int(question['author_id']))
+                await core.send_embed_with_thumbnail(
+                    user, title='Réponse à ta question',
+                    description=(f'**Ta question :**\n{question.get("content", "")}\n\n'
+                                 f'**Réponse de René :**\n{text}'),
+                    color=core.COLOR_SUCCESS, image_path=core.IMAGE_READ)
+                delivery = 'Réponse envoyée en MP.'
+            except (discord.Forbidden, discord.NotFound):
+                raise ValueError('Cette personne refuse les MP du bot.') from None
+        question.update({'answered': True, 'answered_by': core.bot.user.id if core.bot.user else None,
+                         'answer': None if close_only else text, 'closed': close_only,
+                         'answered_at': datetime.now(timezone.utc).isoformat(),
+                         'delivery_result': delivery})
+        core.save_runtime_json(core.QUESTIONS_FILE, core.bot.questions)
+    notification_id = question.get('staff_notification_message_id')
+    channel = guild.get_channel(staff_channel_id(guild) or int(question.get('channel_id') or 0))
+    if notification_id and isinstance(channel, discord.TextChannel):
+        try:
+            message = channel.get_partial_message(int(notification_id))
+            await message.reply('✅ René a répondu depuis le panel.' if not close_only else '✅ Ticket clos depuis le panel.',
+                                mention_author=False, allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException:
+            pass
+    analytics.audit(guild.id, 'ticket', f'Ticket {question_id} : {delivery}')
+    await core.save_state_immediately()
+    return {'ok': True, 'message': delivery}
+
+
+async def text_channels(guild_id):
+    guild = guild_for(guild_id)
+    me = guild.me
+    items = [{'id': str(c.id), 'name': c.name, 'category': c.category.name if c.category else ''}
+             for c in guild.text_channels if me and c.permissions_for(me).send_messages]
+    return {'items': items}
+
+
+async def say_as_rene(guild_id, channel_id, text):
+    guild = guild_for(guild_id)
+    channel = guild.get_channel(int(channel_id))
+    if not isinstance(channel, discord.TextChannel):
+        raise ValueError('Choisis un salon textuel.')
+    await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+    analytics.audit(guild.id, 'say', f'René a parlé dans #{channel.name}')
+    return {'ok': True, 'message': f'Message publié dans #{channel.name}.'}
 
 
 async def ask_ai(guild_id, question, actor):
@@ -495,6 +757,97 @@ def install_panel(app):
         if len(reason) < 5:
             return jsonify({'error': 'Indique un motif d’au moins cinq caractères.'}), 400
         return response(lambda: run(ban_member(positive_id(guild_id), positive_id(data.get('user_id')), reason), 30))
+
+    @app.post('/api/guild/<guild_id>/warn')
+    def warn(guild_id):
+        protected()
+        data = payload()
+        reason = str(data.get('reason', '')).strip()[:400]
+        if len(reason) < 3:
+            return jsonify({'error': 'Indique un motif.'}), 400
+        return response(lambda: run(warn_member(positive_id(guild_id), positive_id(data.get('user_id')), reason), 40))
+
+    @app.post('/api/guild/<guild_id>/tempban')
+    def tempban(guild_id):
+        protected()
+        data = payload()
+        reason = str(data.get('reason', '')).strip()[:400]
+        try:
+            hours = int(data.get('hours', 0))
+        except (TypeError, ValueError):
+            hours = 0
+        if len(reason) < 3:
+            return jsonify({'error': 'Indique un motif.'}), 400
+        if not 1 <= hours <= 24 * 90:
+            return jsonify({'error': 'Durée entre 1 heure et 90 jours.'}), 400
+        return response(lambda: run(temp_ban_member(positive_id(guild_id), positive_id(data.get('user_id')), reason, hours), 40))
+
+    @app.get('/api/guild/<guild_id>/tempbans')
+    def list_tempbans(guild_id):
+        protected()
+        return response(lambda: run(temp_bans(positive_id(guild_id))))
+
+    @app.post('/api/guild/<guild_id>/tempbans/<user_id>/lift')
+    def lift_tempban(guild_id, user_id):
+        protected()
+        return response(lambda: run(lift_temp_ban(positive_id(guild_id), positive_id(user_id)), 30))
+
+    @app.get('/api/guild/<guild_id>/roles')
+    def list_roles(guild_id):
+        protected()
+        return response(lambda: run(guild_roles(positive_id(guild_id))))
+
+    @app.post('/api/guild/<guild_id>/roles')
+    def change_role(guild_id):
+        protected()
+        data = payload()
+        return response(lambda: run(set_member_role(positive_id(guild_id), positive_id(data.get('user_id')),
+            positive_id(data.get('role_id')), bool(data.get('enabled'))), 30))
+
+    @app.post('/api/guild/<guild_id>/express')
+    def express(guild_id):
+        protected()
+        data = payload()
+        return response(lambda: run(launch_express(positive_id(guild_id), positive_id(data.get('user_id'))), 35))
+
+    @app.post('/api/guild/<guild_id>/appointments/<kind>/<entry_id>/no-show')
+    def no_show(guild_id, kind, entry_id):
+        protected()
+        if kind not in {'rdv', 'express'} or not entry_id.isalnum() or len(entry_id) > 20:
+            abort(404)
+        return response(lambda: run(mark_no_show(positive_id(guild_id), kind, entry_id), 30))
+
+    @app.get('/api/guild/<guild_id>/tickets')
+    def list_tickets(guild_id):
+        protected()
+        return response(lambda: run(tickets(positive_id(guild_id))))
+
+    @app.post('/api/guild/<guild_id>/tickets/<question_id>/reply')
+    def reply_ticket(guild_id, question_id):
+        protected()
+        text = str(payload().get('message', '')).strip()
+        if not 1 <= len(text) <= 1800:
+            return jsonify({'error': 'La réponse doit contenir entre 1 et 1 800 caractères.'}), 400
+        return response(lambda: run(answer_ticket(positive_id(guild_id), positive_id(question_id), text), 35))
+
+    @app.post('/api/guild/<guild_id>/tickets/<question_id>/close')
+    def close_ticket(guild_id, question_id):
+        protected()
+        return response(lambda: run(answer_ticket(positive_id(guild_id), positive_id(question_id), '', True), 30))
+
+    @app.get('/api/guild/<guild_id>/channels')
+    def list_channels(guild_id):
+        protected()
+        return response(lambda: run(text_channels(positive_id(guild_id))))
+
+    @app.post('/api/guild/<guild_id>/say')
+    def say(guild_id):
+        protected()
+        data = payload()
+        text = str(data.get('message', '')).strip()
+        if not 1 <= len(text) <= 1800:
+            return jsonify({'error': 'Le message doit contenir entre 1 et 1 800 caractères.'}), 400
+        return response(lambda: run(say_as_rene(positive_id(guild_id), positive_id(data.get('channel_id')), text), 30))
 
     @app.post('/api/guild/<guild_id>/gift/challenge')
     def gift_challenge(guild_id):
