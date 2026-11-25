@@ -1,0 +1,95 @@
+/* Salons de tickets : liste à gauche, conversation à droite (une seule colonne à la verticale). */
+#ticket-mode{margin-bottom:16px}
+.rooms{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+.rooms-side .section-label{margin-top:0}
+.rooms-side .search-wrap{max-width:none;margin-bottom:10px}
+.rooms-items{max-height:calc(100svh - 300px);overflow-y:auto}
+.room-row{width:100%;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;border-radius:12px}
+.room-row.active{background:rgba(10,132,255,.14)}
+.room-row.active strong{color:var(--blue)}
+.unread-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--blue);box-shadow:0 0 10px rgba(10,132,255,.7)}
+
+.room{display:flex;flex-direction:column;height:calc(100svh - 230px);min-height:460px;padding:0;overflow:hidden}
+.room-empty{margin:auto;text-align:center;color:var(--text-2);padding:30px}
+.room-empty .halo-avatar{margin:0 auto 14px}
+.room-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--sep)}
+.room-head .row-main small{white-space:normal}
+.room-back{display:none}
+.room-messages{flex:1;overflow-y:auto;padding:14px 18px 8px;scroll-behavior:smooth}
+
+/* Messages façon Discord, typographie iOS */
+.d-message{display:flex;gap:12px;padding:8px 0 2px;animation:appear .35s var(--ease-out)}
+.d-message.grouped{padding-top:2px}
+.d-message .avatar{width:38px;height:38px}
+.d-gutter{flex:none;width:38px}
+.d-main{flex:1;min-width:0}
+.d-head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.d-head strong{font-size:15px}
+.d-head time{font-size:12px;color:var(--text-3)}
+.d-bot{font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:5px;background:var(--blue);color:#fff}
+.from-rene .d-bot{background:var(--halo-conic)}
+.d-text{font-size:15px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.d-attachment{display:block;max-width:min(360px,100%);max-height:300px;margin-top:6px;border-radius:12px;object-fit:cover}
+.d-embed{display:flex;gap:12px;max-width:520px;margin-top:6px;padding:12px 14px;border-radius:10px;background:#232327;border-left:4px solid var(--embed,#3A3A3C)}
+.d-embed-body{flex:1;min-width:0;display:grid;gap:6px}
+.d-embed-author{font-size:13px;font-weight:600}
+.d-embed-title{font-size:15px;font-weight:700;color:var(--text);text-decoration:none}
+a.d-embed-title{color:#5AA9FF}
+.d-embed-text{font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;color:#D1D1D6}
+.d-embed-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 14px}
+.d-embed-field{grid-column:1/-1}
+.d-embed-field.inline{grid-column:auto}
+.d-embed-field strong{display:block;font-size:13px;margin-bottom:2px}
+.d-embed-image{display:block;max-width:100%;max-height:300px;border-radius:8px;object-fit:cover}
+.d-embed-thumb{flex:none;width:72px;height:72px;border-radius:8px;object-fit:cover}
+.d-embed-footer{font-size:12px;color:var(--text-2)}
+.d-embed-link{display:block;font-size:13px;color:#5AA9FF;overflow-wrap:anywhere;margin-top:4px}
+
+/* Zone d'écriture */
+.room-composer{border-top:1px solid var(--sep);padding:10px 14px 12px;background:var(--bg-1)}
+.composer-row{display:flex;align-items:flex-end;gap:8px}
+.composer-row textarea{flex:1;min-height:42px;max-height:180px;resize:none;background:var(--bg-2);border:1px solid transparent;border-radius:21px;padding:10px 16px;font-size:15px;line-height:1.4;outline:none}
+.composer-row textarea:focus{border-color:var(--blue)}
+.composer-tool{display:grid;place-items:center;flex:none;width:42px;height:42px;border:0;border-radius:50%;background:var(--bg-2);color:var(--blue);font-size:18px;cursor:pointer}
+.composer-tool.active{background:var(--blue);color:#fff}
+.mention-row{padding:8px 4px 0;font-size:14px;color:var(--text-2)}
+.room-attachment{display:flex;align-items:center;gap:12px;margin-bottom:10px;padding:8px;border-radius:14px;background:var(--bg-2)}
+.room-attachment img{width:52px;height:52px;border-radius:10px;object-fit:cover}
+.room-attachment .in-embed{font-size:13px;gap:8px}
+
+/* Constructeur d'embed et aperçu */
+.embed-builder{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:10px;max-height:46svh;overflow-y:auto;padding:4px 2px 8px}
+.embed-form{display:grid;gap:8px;align-content:start}
+.embed-form input,.embed-form textarea,.embed-field input,.embed-field textarea{width:100%;background:var(--bg-2);border:1px solid transparent;border-radius:12px;padding:10px 12px;font-size:15px;outline:none}
+.embed-form input:focus,.embed-form textarea:focus,.embed-field input:focus,.embed-field textarea:focus{border-color:var(--blue)}
+.embed-form textarea{resize:vertical}
+.embed-colors{display:flex;flex-wrap:wrap;gap:8px;padding:2px 0}
+.swatch{width:30px;height:30px;padding:0;border:2px solid transparent;border-radius:50%;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);transition:transform .25s var(--ease-out)}
+.swatch.active{border-color:#fff;transform:scale(1.12)}
+.swatch.custom{appearance:none;-webkit-appearance:none;background:var(--halo-conic);overflow:hidden}
+.swatch.custom::-webkit-color-swatch-wrapper{padding:0;opacity:0}
+.embed-fields{display:grid;gap:8px}
+.embed-field{display:grid;gap:6px;padding:10px;border-radius:12px;background:#232327}
+.embed-field-top{display:flex;gap:6px;align-items:center}
+.embed-field .switch-row{font-size:13px;color:var(--text-2)}
+.embed-field input.switch,.room-composer input.switch{width:51px;height:31px;padding:0;border:0;border-radius:999px;background:var(--bg-3)}
+.embed-field input.switch:checked,.room-composer input.switch:checked{background:var(--green)}
+.embed-field .switch-row span{flex:1}
+.embed-preview-wrap{position:sticky;top:0;align-self:start}
+#embed-preview .d-embed{max-width:none;margin-top:0}
+
+@media (max-width:1100px){
+  .rooms{grid-template-columns:280px minmax(0,1fr)}
+  .embed-builder{grid-template-columns:1fr}
+  .embed-preview-wrap{position:static}
+}
+
+/* Tablette verticale : la liste, puis la conversation en plein écran avec un bouton retour */
+@media (orientation: portrait) and (max-width:1100px){
+  .rooms{grid-template-columns:1fr}
+  .rooms .room{display:none}
+  .rooms.has-room .rooms-side{display:none}
+  .rooms.has-room .room{display:flex;height:calc(100svh - 310px - env(safe-area-inset-bottom));min-height:420px}
+  .room-back{display:inline-block;font-weight:600}
+  .rooms-items{max-height:none}
+}

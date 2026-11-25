@@ -22,7 +22,7 @@ from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
-from rene import assistance, broadcast, polls, rewards, robloxapi, stats
+from rene import assistance, broadcast, polls, rewards, robloxapi, stats, ticketrooms
 from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
@@ -872,6 +872,37 @@ def install_panel(app):
         if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
             abort(404)
         return response(lambda: run(resend_gift(positive_id(guild_id), code), 40))
+
+    @app.get('/api/guild/<guild_id>/ticket-rooms')
+    def ticket_rooms(guild_id):
+        protected()
+        return response(lambda: run(ticketrooms.list_rooms(guild_for(positive_id(guild_id)))))
+
+    @app.get('/api/guild/<guild_id>/ticket-rooms/<channel_id>/messages')
+    def ticket_room_messages(guild_id, channel_id):
+        protected()
+        after = request.args.get('after', '')
+        return response(lambda: run(ticketrooms.messages(guild_for(positive_id(guild_id)), positive_id(channel_id),
+                                                         positive_id(after) if after else None), 30))
+
+    @app.post('/api/guild/<guild_id>/ticket-rooms/<channel_id>/messages')
+    def ticket_room_send(guild_id, channel_id):
+        protected()
+        if request.content_length and request.content_length > 12 * 1024 * 1024:
+            return jsonify({'error': 'Message trop lourd (image de 8 Mo maximum).'}), 413
+        data = payload()
+        return response(lambda: run(ticketrooms.send(guild_for(positive_id(guild_id)), positive_id(channel_id), data), 60))
+
+    @app.get('/api/guild/<guild_id>/ticket-settings')
+    def ticket_settings(guild_id):
+        protected()
+        return response(lambda: run(ticketrooms.settings(guild_for(positive_id(guild_id)))))
+
+    @app.post('/api/guild/<guild_id>/ticket-settings')
+    def ticket_settings_save(guild_id):
+        protected()
+        return response(lambda: run(ticketrooms.save_settings(guild_for(positive_id(guild_id)),
+                                                              payload().get('category_id')), 30))
 
     @app.get('/api/guild/<guild_id>/stats')
     def detailed_stats(guild_id):
