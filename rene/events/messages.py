@@ -31,7 +31,7 @@ async def on_message(message: discord.Message) -> None:
     if link_result == "blocked":
         return
 
-    if not contains_bad_word(message.content):
+    if not contains_bad_word(message.content, message.guild.id if message.guild else None):
         return
 
     original_content = message.content

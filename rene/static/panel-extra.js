@@ -15,8 +15,8 @@ function navigate(view) {
   state.view = view;
   for (const node of document.querySelectorAll('.view')) node.classList.toggle('hidden', node.id !== `view-${view}`);
   for (const node of document.querySelectorAll('.nav')) node.classList.toggle('active', node.dataset.view === view);
-  const names = {overview:'Vue d’ensemble', members:'Membres', tickets:'Tickets', appointments:'Rendez-vous', moderation:'Sanctions', messages:'Parler en René', gifts:'Cadeaux', presence:'Présence', settings:'Réglages', ai:'René IA'};
-  const subtitles = {overview:'Le serveur en un coup d’œil.', members:'Touche un membre pour agir.', tickets:'Les questions des membres.', appointments:'Planifie, puis note qui est venu.', moderation:'Les bannissements en cours.', messages:'René parle pour toi.', gifts:'Un code unique, livré en MP.', presence:'Qui est passé récemment.', settings:'Statut et service.', ai:'Une question, une réponse.'};
+  const names = {overview:'Vue d’ensemble', members:'Membres', tickets:'Tickets', appointments:'Rendez-vous', moderation:'Sanctions', messages:'Parler en René', polls:'Sondages', gifts:'Cadeaux', presence:'Présence', settings:'Réglages', ai:'René IA'};
+  const subtitles = {overview:'Le serveur en un coup d’œil.', members:'Touche un membre pour agir.', tickets:'Les questions des membres.', appointments:'Planifie, puis note qui est venu.', moderation:'Mots interdits et bannissements.', messages:'René parle pour toi.', polls:'Pose une question au serveur.', gifts:'Un code unique, livré en MP.', presence:'Qui est passé récemment.', settings:'Statut et service.', ai:'Une question, une réponse.'};
   $('#page-title').textContent = names[view] || view;
   $('#crumb').textContent = names[view] || view;
   $('#page-subtitle').textContent = subtitles[view] || '';
@@ -35,7 +35,8 @@ async function refresh() {
     if (state.view === 'appointments') await loadAppointments();
     if (state.view === 'settings') await loadSettings();
     if (state.view === 'tickets') await loadTickets();
-    if (state.view === 'moderation') await loadTempBans();
+    if (state.view === 'moderation') await Promise.all([loadTempBans(), loadWords()]);
+    if (state.view === 'polls') await loadPolls();
     if (state.view === 'messages') await loadChannels();
   } catch (error) { notice(error.message, true); haptic([35, 35, 35]); }
 }

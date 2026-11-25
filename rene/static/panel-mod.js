@@ -486,3 +486,215 @@ $('#roblox-regenerate').onclick = async () => {
   const result = await withButton($('#roblox-regenerate'), () => post('/api/system/roblox'));
   if (result) { roblox.key = result.key; roblox.shown = true; renderRobloxKey(); }
 };
+
+/* ---------- Mots interdits ---------- */
+
+const wordsState = {words: [], filter: ''};
+
+function renderWords() {
+  const needle = wordsState.filter.toLowerCase();
+  const host = $('#words-list');
+  const items = wordsState.words.filter(word => !needle || word.toLowerCase().includes(needle));
+  host.replaceChildren(...items.map(word => {
+    const chip = el('span', 'chip');
+    const remove = Object.assign(el('button', 'chip-remove', '×'), {type: 'button', title: `Retirer « ${word} »`});
+    remove.setAttribute('aria-label', `Retirer ${word}`);
+    remove.onclick = async () => {
+      const result = await withButton(remove, () => post(`/api/guild/${state.guild}/bad-words`, {action: 'remove', word}));
+      if (result) applyWords(result);
+    };
+    chip.append(el('span', '', word), remove);
+    return chip;
+  }));
+  if (!items.length) empty(host, wordsState.words.length ? 'Aucun mot ne correspond.' : 'La liste est vide : René ne filtre plus rien.');
+}
+
+function applyWords(data) {
+  wordsState.words = data.words;
+  $('#words-count').textContent = `${fmt(data.words.length)} mot(s)${data.custom ? '' : ' · liste par défaut'}`;
+  $('#words-reset').classList.toggle('hidden', !data.custom);
+  renderWords();
+}
+
+async function loadWords() {
+  applyWords(await api(`/api/guild/${state.guild}/bad-words`));
+}
+
+$('#words-form').onsubmit = async event => {
+  event.preventDefault();
+  const word = $('#words-input').value.trim();
+  if (!word) return;
+  const result = await withButton(event.target.querySelector('button'), () => post(`/api/guild/${state.guild}/bad-words`, {action: 'add', word}));
+  if (result) { $('#words-input').value = ''; applyWords(result); }
+};
+$('#words-filter').oninput = event => { wordsState.filter = event.target.value.trim(); renderWords(); };
+$('#words-reset').onclick = async () => {
+  if (!window.confirm('Remplacer ta liste par celle d’origine de René ?')) return;
+  const result = await withButton($('#words-reset'), () => post(`/api/guild/${state.guild}/bad-words`, {action: 'reset'}));
+  if (result) applyWords(result);
+};
+$('#words-test').onsubmit = async event => {
+  event.preventDefault();
+  const text = $('#words-test-input').value.trim();
+  if (!text) return;
+  try {
+    const result = await post(`/api/guild/${state.guild}/bad-words/test`, {text});
+    const box = $('#words-test-result');
+    box.textContent = result.message;
+    box.className = `test-result ${result.blocked ? 'bad' : 'good'}`;
+  } catch (error) { notice(error.message, true); }
+};
+
+/* ---------- Sondages ---------- */
+
+const pollState = {hours: 24, cards: new Map(), channelsFor: ''};
+
+function answerInput(value = '') {
+  const row = el('div', 'poll-answer');
+  const input = Object.assign(el('input'), {maxLength: 55, placeholder: 'Réponse', value});
+  input.setAttribute('aria-label', 'Réponse');
+  const remove = Object.assign(el('button', 'chip-remove', '×'), {type: 'button'});
+  remove.setAttribute('aria-label', 'Retirer cette réponse');
+  remove.onclick = () => { row.remove(); updateAnswerButtons(); };
+  row.append(input, remove);
+  return row;
+}
+
+function updateAnswerButtons() {
+  const rows = $('#poll-answers').children;
+  for (const row of rows) row.querySelector('button').classList.toggle('hidden', rows.length <= 2);
+  $('#poll-add-answer').classList.toggle('hidden', rows.length >= 10);
+  [...rows].forEach((row, i) => { row.querySelector('input').placeholder = `Réponse ${i + 1}`; });
+}
+
+function resetPollForm() {
+  $('#poll-form').reset();
+  $('#poll-answers').replaceChildren(answerInput(), answerInput());
+  updateAnswerButtons();
+}
+
+$('#poll-add-answer').onclick = () => {
+  const row = answerInput();
+  $('#poll-answers').append(row);
+  updateAnswerButtons();
+  row.querySelector('input').focus();
+};
+for (const button of document.querySelectorAll('#poll-duration button')) {
+  button.onclick = () => {
+    pollState.hours = Number(button.dataset.hours);
+    for (const other of document.querySelectorAll('#poll-duration button')) other.classList.toggle('active', other === button);
+  };
+}
+
+async function loadPollChannels() {
+  if (pollState.channelsFor === state.guild) return;
+  const data = await api(`/api/guild/${state.guild}/channels`);
+  const select = $('#poll-channel');
+  select.replaceChildren(Object.assign(el('option', '', 'Choisir un salon'), {value: ''}));
+  for (const channel of data.items) {
+    const option = el('option', '', `# ${channel.name}${channel.category ? ` · ${channel.category}` : ''}`);
+    option.value = channel.id;
+    select.append(option);
+  }
+  pollState.channelsFor = state.guild;
+}
+
+function timeLeft(expiresAt) {
+  const left = new Date(expiresAt).getTime() - Date.now();
+  if (left <= 0) return 'se termine…';
+  const hours = Math.floor(left / 3600000), minutes = Math.floor(left / 60000) % 60;
+  if (hours >= 48) return `encore ${Math.round(hours / 24)} jours`;
+  return hours ? `encore ${hours} h ${String(minutes).padStart(2, '0')}` : `encore ${minutes} min`;
+}
+
+function pollCard(entry) {
+  let card = pollState.cards.get(entry.id);
+  if (!card) {
+    card = el('article', 'card poll-card');
+    const head = el('div', 'card-head');
+    const titles = el('div');
+    titles.append(el('h3', 'poll-question'), el('small', 'muted poll-meta'));
+    const actions = el('div', 'poll-actions');
+    const link = Object.assign(el('a', 'text-button', 'Discord ↗'), {target: '_blank', rel: 'noopener'});
+    const end = Object.assign(el('button', 'mini ban', 'Terminer'), {type: 'button'});
+    end.onclick = async () => {
+      if (!window.confirm('Terminer ce sondage maintenant ?')) return;
+      if (await withButton(end, () => post(`/api/guild/${state.guild}/polls/${entry.id}/end`))) await loadPolls();
+    };
+    actions.append(link, end);
+    head.append(titles, actions);
+    const answers = el('div', 'poll-results');
+    entry.answers.forEach(() => {
+      const row = el('div', 'poll-row');
+      const label = el('div', 'poll-label');
+      label.append(el('span', 'poll-text'), el('span', 'poll-count'));
+      const track = el('div', 'poll-track');
+      track.append(el('div', 'poll-fill'));
+      row.append(label, track);
+      answers.append(row);
+    });
+    card.append(head, answers);
+    pollState.cards.set(entry.id, card);
+  }
+  card.querySelector('.poll-question').textContent = entry.question;
+  const status = entry.deleted ? 'Message supprimé' : entry.finished ? 'Terminé' : timeLeft(entry.expires_at);
+  card.querySelector('.poll-meta').textContent =
+    `#${entry.channel_name} · ${fmt(entry.total)} vote(s) · ${status}${entry.multiple ? ' · choix multiple' : ''}`;
+  card.querySelector('a').href = `https://discord.com/channels/${entry.guild_id}/${entry.channel_id}/${entry.message_id}`;
+  card.querySelector('.poll-actions .mini').classList.toggle('hidden', entry.finished);
+  card.classList.toggle('finished', !!entry.finished);
+  const results = entry.results || [];
+  const votes = results.reduce((sum, n) => sum + n, 0);
+  const best = Math.max(0, ...results);
+  card.querySelectorAll('.poll-row').forEach((row, i) => {
+    const count = results[i] || 0;
+    const share = votes ? Math.round(count / votes * 100) : 0;
+    row.classList.toggle('leader', count > 0 && count === best);
+    row.querySelector('.poll-text').textContent = entry.answers[i];
+    row.querySelector('.poll-count').textContent = `${share} % · ${fmt(count)}`;
+    row.querySelector('.poll-fill').style.width = `${share}%`;
+  });
+  return card;
+}
+
+async function loadPolls(quiet = false) {
+  if (!quiet) {
+    await loadPollChannels();
+    if (!$('#poll-answers').children.length) resetPollForm();
+  }
+  const data = await api(`/api/guild/${state.guild}/polls`);
+  const host = $('#poll-list');
+  const cards = data.items.map(pollCard);
+  host.replaceChildren(...cards);
+  if (!cards.length) empty(host, 'Aucun sondage pour l’instant.');
+}
+
+$('#poll-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.target;
+  const answers = [...$('#poll-answers').querySelectorAll('input')].map(input => input.value.trim()).filter(Boolean);
+  if (!form.elements.namedItem('channel_id').value) { notice('Choisis un salon.', true); return; }
+  if (answers.length < 2) { notice('Ajoute au moins deux réponses.', true); return; }
+  const result = await withButton(form.querySelector('button[type=submit]'), () => post(`/api/guild/${state.guild}/polls`, {
+    channel_id: form.elements.namedItem('channel_id').value,
+    question: form.elements.namedItem('question').value,
+    answers, hours: pollState.hours, multiple: form.elements.namedItem('multiple').checked,
+  }));
+  if (result) {
+    const channel = form.elements.namedItem('channel_id').value;
+    resetPollForm();
+    form.elements.namedItem('channel_id').value = channel;
+    await loadPolls(true);
+  }
+};
+
+setInterval(() => {
+  if (state.view === 'polls' && state.csrf && !document.hidden) loadPolls(true).catch(() => {});
+}, 5000);
+
+const previousGuildChangePolls = $('#guild-select').onchange;
+$('#guild-select').onchange = () => {
+  pollState.cards.clear();
+  pollState.channelsFor = '';
+  previousGuildChangePolls();
+};

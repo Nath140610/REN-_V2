@@ -22,7 +22,7 @@ from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
-from rene import robloxapi
+from rene import polls, robloxapi
 from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
@@ -635,6 +635,57 @@ async def say_as_rene(guild_id, channel_id, text):
     return {'ok': True, 'message': f'Message publié dans #{channel.name}.'}
 
 
+def clean_word(raw):
+    word = ' '.join(str(raw or '').strip().lower().split())
+    if not 2 <= len(word) <= 40 or not core.normalize_text(word):
+        raise ValueError('Un mot ou une expression de 2 à 40 caractères.')
+    return word
+
+
+def words_json(guild):
+    config = core.bot.config_data.get(str(guild.id))
+    custom = isinstance(config, dict) and isinstance(config.get('bad_words'), list)
+    return {'words': sorted(core.guild_bad_words(guild.id), key=str.casefold), 'custom': custom,
+            'defaults': len(core.BAD_WORDS)}
+
+
+async def bad_words(guild_id):
+    return words_json(guild_for(guild_id))
+
+
+async def change_bad_words(guild_id, action, raw=None):
+    guild = guild_for(guild_id)
+    config = core.bot.get_guild_config(guild.id)
+    words = list(core.guild_bad_words(guild.id))
+    if action == 'reset':
+        config.pop('bad_words', None)
+        detail, message = 'Liste des mots interdits rétablie', 'Liste par défaut rétablie.'
+    else:
+        word = clean_word(raw)
+        existing = {core.normalize_text(item) for item in words}
+        if action == 'add':
+            if core.normalize_text(word) in existing:
+                raise ValueError('Ce mot est déjà dans la liste.')
+            if len(words) >= 500:
+                raise ValueError('La liste est limitée à 500 mots.')
+            words.append(word)
+            detail, message = f'Mot interdit ajouté : {word}', f'« {word} » ajouté.'
+        else:
+            words = [item for item in words if core.normalize_text(item) != core.normalize_text(word)]
+            detail, message = f'Mot interdit retiré : {word}', f'« {word} » retiré.'
+        config['bad_words'] = sorted(words, key=str.casefold)
+    analytics.audit(guild.id, 'words', detail)
+    await core.save_state_immediately()
+    return dict(words_json(guild), ok=True, message=message)
+
+
+async def test_bad_words(guild_id, text):
+    guild = guild_for(guild_id)
+    found = core.find_bad_word(text, guild.id)
+    return {'blocked': found is not None, 'word': found,
+            'message': f'René supprimerait ce message (« {found} »).' if found else 'René laisserait passer ce message.'}
+
+
 async def ask_ai(guild_id, question, actor):
     data = await snapshot(guild_id)
     context = {'guild': data['guild'], 'since': data['since'], 'totals_30_days': data['totals'],
@@ -798,6 +849,50 @@ def install_panel(app):
         if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
             abort(404)
         return response(lambda: run(resend_gift(positive_id(guild_id), code), 40))
+
+    @app.get('/api/guild/<guild_id>/bad-words')
+    def list_bad_words(guild_id):
+        protected()
+        return response(lambda: run(bad_words(positive_id(guild_id))))
+
+    @app.post('/api/guild/<guild_id>/bad-words')
+    def edit_bad_words(guild_id):
+        protected()
+        data = payload()
+        action = str(data.get('action', ''))
+        if action not in {'add', 'remove', 'reset'}:
+            return jsonify({'error': 'Action inconnue.'}), 400
+        return response(lambda: run(change_bad_words(positive_id(guild_id), action, data.get('word')), 30))
+
+    @app.post('/api/guild/<guild_id>/bad-words/test')
+    def try_bad_words(guild_id):
+        protected()
+        text = str(payload().get('text', ''))[:2000]
+        return response(lambda: run(test_bad_words(positive_id(guild_id), text)))
+
+    @app.get('/api/guild/<guild_id>/polls')
+    def list_polls(guild_id):
+        protected()
+        return response(lambda: run(polls.list_polls(guild_for(positive_id(guild_id))), 30))
+
+    @app.post('/api/guild/<guild_id>/polls')
+    def create_poll(guild_id):
+        protected()
+        data = payload()
+        try:
+            hours = int(data.get('hours', 24))
+        except (TypeError, ValueError):
+            hours = 0
+        return response(lambda: run(polls.create_poll(guild_for(positive_id(guild_id)),
+            int(positive_id(data.get('channel_id'))), str(data.get('question', '')),
+            polls.clean_answers(data.get('answers')), hours, bool(data.get('multiple'))), 30))
+
+    @app.post('/api/guild/<guild_id>/polls/<poll_id>/end')
+    def end_poll(guild_id, poll_id):
+        protected()
+        if not poll_id.isalnum() or len(poll_id) > 20:
+            abort(404)
+        return response(lambda: run(polls.end_poll(guild_for(positive_id(guild_id)), poll_id), 30))
 
     @app.post('/api/guild/<guild_id>/gifts/<code>/used')
     def gift_used(guild_id, code):

@@ -274,19 +274,35 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def contains_bad_word(text: str) -> bool:
+def guild_bad_words(guild_id: int | None = None) -> list[str]:
+    """Liste du serveur modifiable depuis le panel ; la liste par défaut sinon."""
+    if guild_id is not None:
+        config = bot.config_data.get(str(guild_id))
+        words = config.get("bad_words") if isinstance(config, dict) else None
+        if isinstance(words, list):
+            return [str(word) for word in words]
+    return sorted(BAD_WORDS)
+
+
+def find_bad_word(text: str, guild_id: int | None = None) -> str | None:
     cleaned_text = normalize_text(text)
 
-    for bad_word in BAD_WORDS:
+    for bad_word in guild_bad_words(guild_id):
         cleaned_word = normalize_text(bad_word)
+        if not cleaned_word:
+            continue
 
         if " " in cleaned_word:
             if f" {cleaned_word} " in f" {cleaned_text} ":
-                return True
+                return bad_word
         elif re.search(rf"\b{re.escape(cleaned_word)}\b", cleaned_text):
-            return True
+            return bad_word
 
-    return False
+    return None
+
+
+def contains_bad_word(text: str, guild_id: int | None = None) -> bool:
+    return find_bad_word(text, guild_id) is not None
 
 
 def extract_urls(text: str) -> list[str]:
