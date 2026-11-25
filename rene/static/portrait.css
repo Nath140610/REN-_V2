@@ -1,0 +1,69 @@
+/* Tablette à la verticale : onglets en bas, contenu pleine largeur, fiches qui montent du bas. */
+.tabbar{display:none}
+
+@media (orientation: portrait) and (max-width: 1100px){
+  .app{display:block}
+  .sidebar,.menu{display:none!important}
+  .topbar{padding:0 20px}
+  .crumb{display:block}
+  .content{padding:22px 22px calc(110px + env(safe-area-inset-bottom))}
+  .page-heading h1{font-size:32px}
+  .island{left:50%}
+
+  /* Barre d'onglets translucide */
+  .tabbar{position:fixed;z-index:40;left:0;right:0;bottom:0;display:flex;justify-content:space-around;
+    padding:8px 10px calc(10px + env(safe-area-inset-bottom));background:rgba(18,18,20,.82);
+    backdrop-filter:saturate(180%) blur(22px);-webkit-backdrop-filter:saturate(180%) blur(22px);
+    border-top:1px solid var(--sep);animation:tabbar-in .5s var(--ease-out)}
+  @keyframes tabbar-in{from{transform:translateY(100%)}}
+  .tab{position:relative;flex:1;max-width:150px;display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:6px 4px 2px;border:0;background:transparent;color:var(--text-2);font-size:11px;font-weight:600;
+    border-radius:14px;transition:color .25s var(--ease),transform .28s var(--ease-out)}
+  .tab .tab-icon{width:30px;height:30px;border-radius:9px;font-size:16px;opacity:.55;filter:saturate(.4);
+    transition:opacity .3s var(--ease),filter .3s var(--ease),transform .45s var(--spring, var(--ease-out))}
+  .tab.active{color:var(--blue)}
+  .tab.active .tab-icon{opacity:1;filter:none;transform:translateY(-2px) scale(1.06)}
+  .tab.pressed{transform:scale(.92)}
+  .tab-slot{display:grid;place-items:center}
+  .tab-label{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab-badge{position:absolute;top:0;left:calc(50% + 6px);min-width:20px;margin:0;padding:1px 6px;font-size:11px}
+  .tab-more .tab-icon{font-size:11px;letter-spacing:-1px}
+
+  /* Grilles : une colonne, sauf les petits indicateurs */
+  .metrics{grid-template-columns:repeat(2,1fr);gap:12px}
+  .grid-two,.grid-two.even{grid-template-columns:1fr}
+  .member-stat{width:64px}
+  .gift-tools{flex-direction:column;align-items:stretch}
+  .gift-tools .segmented{align-self:flex-start;max-width:100%;overflow-x:auto}
+  .stats-top{flex-direction:column;align-items:flex-start}
+  .ai-main{min-height:calc(100svh - 260px)}
+  .ai-chat{max-height:none}
+
+  /* Fiches : elles montent du bas de l'écran, avec une poignée */
+  .dialog{place-items:end center;padding:0}
+  .sheet{width:min(720px,100%);max-height:88svh;border-radius:26px 26px 0 0;
+    padding:10px 22px calc(24px + env(safe-area-inset-bottom));animation:sheet-up .5s var(--ease-out)}
+  .sheet::before{content:"";display:block;width:40px;height:5px;margin:0 auto 10px;border-radius:5px;background:#48484A}
+  @keyframes sheet-up{from{transform:translateY(100%)}}
+  .dialog.closing .sheet{animation:sheet-down .26s var(--ease) forwards}
+  @keyframes sheet-down{to{transform:translateY(100%)}}
+
+  /* Feuille « Plus » */
+  .more-title{font-size:22px}
+  .more-sheet .sheet-head{align-items:center;margin-bottom:6px}
+  .more-row .nav-icon{width:30px;height:30px}
+  .more-row .more-label{flex:1}
+  .more-row .more-badge{margin:0 4px 0 auto}
+  .more-row .more-badge + i{margin-left:0}
+  .more-row.active{background:rgba(10,132,255,.14)}
+  .more-row.active .more-label{color:var(--blue);font-weight:600}
+  .more-logout{margin-top:16px}
+}
+
+/* Très étroit (téléphone) : on garde des onglets plus compacts */
+@media (orientation: portrait) and (max-width: 520px){
+  .content{padding:18px 16px calc(100px + env(safe-area-inset-bottom))}
+  .tab .tab-icon{width:26px;height:26px;font-size:14px}
+  .metrics{gap:8px}
+  .crumb{display:none}
+}

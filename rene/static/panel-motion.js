@@ -134,7 +134,7 @@
 
   // Appui visuel immédiat sur tablette (avant même le relâchement).
   document.addEventListener('pointerdown', event => {
-    const target = event.target.closest?.('.button, .mini, .nav, .group-row, .list-row, .member-row, .prompt, .chip, .icon-button, .segmented button');
+    const target = event.target.closest?.('.tab, .button, .mini, .nav, .group-row, .list-row, .member-row, .prompt, .chip, .icon-button, .segmented button');
     if (!target) return;
     target.classList.add('pressed');
     const release = () => { target.classList.remove('pressed'); window.removeEventListener('pointerup', release); window.removeEventListener('pointercancel', release); };
