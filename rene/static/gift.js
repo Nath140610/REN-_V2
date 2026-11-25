@@ -14,7 +14,7 @@
   const s = {
     ry: -34, rx: 12, vy: 0, vx: 0, base: -34, hoverX: 0, hoverY: 0,
     dragging: false, scratching: false, requested: false, wantReveal: false,
-    revealed: false, locked: false, code: null, ready: false,
+    revealed: false, locked: false, code: null, ready: false, milestones: new Set(),
   };
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const facingOf = angle => { const r = ((angle % 360) + 360) % 360; return r > 90 && r < 270; };
@@ -321,6 +321,10 @@
       }
     }
     const ratio = clear / total;
+    // Paliers de grattage : un petit tic à 20 % et 40 %, comme une pièce qui accroche.
+    for (const step of [0.2, 0.4]) {
+      if (ratio >= step && !s.milestones.has(step)) { s.milestones.add(step); vibrate([10, 30, 10]); }
+    }
     if (!s.requested && ratio > 0.015) requestCode();
     if (ratio >= 0.58) { s.wantReveal = true; tryReveal(); }
   }
@@ -439,7 +443,11 @@
     card.style.setProperty('--my', `${(32 + s.rx * 2).toFixed(1)}%`);
     card.style.setProperty('--shift', `${(50 + offset * 1.2 + s.rx * 0.8).toFixed(1)}%`);
     const back = facingBack();
-    if (back !== lastFacing) { lastFacing = back; onFacing(back); }
+    if (back !== lastFacing) {
+      if (lastFacing !== null && s.ready) vibrate(6);
+      lastFacing = back;
+      onFacing(back);
+    }
     if (s.scratching && now - lastMoveTime > 60) silence();
     drawFlakes();
     updateTimer(now);

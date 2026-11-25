@@ -19,7 +19,10 @@
     for (const name of ['assist-boot', 'assist-login', 'assist-app']) $(`#${name}`).classList.toggle('hidden', name !== id);
   }
 
+  const vibrate = pattern => { try { navigator.vibrate?.(pattern); } catch {} };
+
   function notice(text, bad = false) {
+    vibrate(bad ? [40, 40, 40, 40, 40] : [16, 50, 28]);
     const box = $('#notice');
     box.textContent = text;
     box.classList.toggle('bad', bad);
@@ -103,6 +106,7 @@
     $('#assist-member').value = member.name;
     $('#assist-member-id').value = member.id;
     $('#assist-selected').textContent = `✓ ${member.name} · @${member.username}`;
+    vibrate([12]);
     $('#assist-results').replaceChildren();
     $('#assist-code').focus();
   }
@@ -155,7 +159,7 @@
     $('#assist-result-title').textContent = title;
     $('#assist-result-text').textContent = text;
     $('#assist-form').classList.add('hidden');
-    try { navigator.vibrate?.(ok ? [20, 40, 30] : [40, 40, 40]); } catch {}
+    vibrate(ok ? [16, 50, 28] : [40, 40, 40, 40, 40]);
   }
 
   function renderHistory() {

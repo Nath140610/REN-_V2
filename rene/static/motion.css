@@ -1,0 +1,84 @@
+/* Mouvements du panel : un seul geste à la fois, accélérations naturelles, aucune coupure. */
+
+/* Démarrage et connexion : on part en douceur, le halo s'efface en dernier */
+.boot.leaving{animation:leave .52s var(--ease) forwards}
+.boot.leaving .halo-avatar{animation:shrink .52s var(--ease) forwards}
+.login.leaving .login-card{animation:leave .48s var(--ease) forwards}
+.login.leaving .halo-avatar::before{animation:none;opacity:.9;transform:scale(1.25);transition:all .3s var(--ease-out)}
+@keyframes leave{to{opacity:0;transform:scale(.97)}}
+@keyframes shrink{to{transform:scale(.85)}}
+.app{animation:fade .6s var(--ease)}
+
+/* Changement de page (API View Transitions sur Chrome / Samsung Internet) */
+::view-transition-old(root){animation:vt-out .18s var(--ease) both}
+::view-transition-new(root){animation:vt-in .42s var(--ease-out) both}
+@keyframes vt-out{to{opacity:0}}
+@keyframes vt-in{from{opacity:0;transform:translateY(8px)}}
+
+/* Appui : la surface s'enfonce légèrement, puis revient */
+.button,.mini,.nav,.group-row,.list-row,.member-row,.prompt,.chip,.icon-button,.segmented button,.picker-option{transition:transform .28s var(--ease-out),background .25s var(--ease),opacity .25s var(--ease)}
+.pressed.button,.pressed.mini,.pressed.prompt,.pressed.icon-button,.pressed.chip{transform:scale(.95)}
+.pressed.nav,.pressed.group-row,.pressed.list-row,.pressed.member-row{transform:scale(.985);background:var(--bg-2)}
+.nav.pressed.active{background:var(--blue-press)}
+.segmented button.pressed{transform:scale(.94)}
+
+/* Actualiser : une rotation qui ralentit à l'arrivée */
+#refresh.spinning{animation:spin .9s var(--ease) infinite}
+@keyframes spin{to{transform:rotate(-360deg)}}
+
+/* Entrée des listes et cartes, en cascade courte */
+body[data-entering] :is(.list-row,.member-row,.top-row,.audit-row,.gift-row,.presence-row,.ticket,.poll-card,.metric,.chip){
+  animation:row-in .5s var(--ease-out) both;animation-delay:calc(var(--i, 0) * 32ms)}
+@keyframes row-in{from{opacity:0;transform:translateY(10px)}}
+
+/* Graphiques : la ligne se dessine, les barres poussent depuis le bas */
+body[data-entering] path.draw{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.3s var(--ease) .15s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+body[data-entering] :is(.join-bar,.flow-bar,.weekday-bar){transform-origin:bottom;animation:grow .8s var(--ease-out) both}
+body[data-entering] .flow-group:nth-child(n) .flow-bar,body[data-entering] .join-bar-wrap .join-bar{animation-delay:.1s}
+@keyframes grow{from{transform:scaleY(0)}}
+.poll-fill,.weekday-bar,.flow-bar{will-change:width,height}
+
+/* Contrôles segmentés : la pastille glisse d'une option à l'autre */
+.segmented.has-thumb{position:relative}
+.segmented .seg-thumb{position:absolute;left:0;top:0;border-radius:7px;background:#636366;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none;transition:transform .42s var(--ease-out),width .42s var(--ease-out),opacity .2s var(--ease)}
+.segmented.has-thumb button{position:relative;z-index:1}
+.segmented.has-thumb button.active{background:transparent}
+.reward-box .segmented .seg-thumb{background:#636366}
+.segmented.disabled{opacity:.4;pointer-events:none}
+
+/* Fiches : montée à l'ouverture, descente à la fermeture */
+.dialog.closing{animation:fade-out .26s var(--ease) forwards}
+.dialog.closing .sheet{animation:sink .26s var(--ease) forwards}
+@keyframes fade-out{to{opacity:0}}
+@keyframes sink{to{transform:translateY(28px);opacity:0}}
+.sheet-pane.slide-in{animation:pane-in .38s var(--ease-out)}
+@keyframes pane-in{from{opacity:0;transform:translateX(18px)}}
+
+/* Notification : arrive avec un éclat qui retombe */
+.notice.pop{animation:flash .9s var(--ease-out)}
+
+/* Badges : un petit rebond quand un ticket ou une demande arrive */
+.badge.bump{animation:bump .6s var(--ease-out)}
+@keyframes bump{30%{transform:scale(1.35)}60%{transform:scale(.92)}}
+
+/* Interrupteurs : le bouton s'étire pendant l'appui, comme sur iOS */
+.switch:active::after{width:33px}
+.switch:checked:active::after{transform:translateX(14px)}
+
+/* Moment fort : un éclat du halo traverse le haut de l'écran, de gauche à droite, puis s'éteint */
+.halo-sweep{position:fixed;left:0;right:0;top:0;height:3px;z-index:300;pointer-events:none;opacity:0;
+  background:linear-gradient(90deg,transparent,#286EFF,#965AFF,#FF46AA,#FF5F50,#FFA53C,#BE50FF,var(--white),transparent);
+  background-size:50% 100%;background-repeat:no-repeat;filter:drop-shadow(0 0 8px rgba(150,90,255,.7))}
+.halo-sweep.run{animation:sweep-top 1.4s var(--ease) forwards}
+@keyframes sweep-top{0%{opacity:0;background-position:-60% 0}15%{opacity:1}85%{opacity:1}100%{opacity:0;background-position:160% 0}}
+
+/* Réglages des vibrations */
+.haptic-settings{display:grid;gap:12px;margin:6px 0 16px}
+.haptic-settings .segmented{margin:0;justify-self:start}
+.haptic-settings .button{justify-self:start}
+
+@media (prefers-reduced-motion:reduce){
+  ::view-transition-old(root),::view-transition-new(root){animation:none}
+  .halo-sweep{display:none}
+}
