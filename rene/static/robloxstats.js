@@ -51,7 +51,7 @@ function rbxTop(host, game) {
   }));
   if (!game.top.length) {
     empty(host, game.last_heartbeat ? 'Personne n’a joué sur cette période.'
-      : 'Mets à jour le module ReneGiftCodes dans le jeu pour voir les joueurs.');
+      : 'Ajoute le Script serveur ReneStats dans le jeu pour voir les joueurs.');
   }
 }
 
@@ -155,4 +155,9 @@ $('#roblox-games-form').onsubmit = async event => {
   const body = {};
   for (const input of $('#roblox-games').querySelectorAll('input')) body[input.name] = input.value.trim();
   await withButton(event.submitter || $('#roblox-games-form button'), () => post('/api/system/roblox/games', body));
+};
+
+$('#roblox-copy-stats').onclick = async () => {
+  try { await copyText((await api('/api/system/roblox/script?name=stats')).script, 'Script copié. Colle-le dans un Script « ReneStats » de ServerScriptService.'); }
+  catch (error) { notice(error.message, true); }
 };

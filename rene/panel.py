@@ -1042,7 +1042,8 @@ def install_panel(app):
     @app.get('/api/system/roblox/script')
     def roblox_script():
         protected()
-        text = (core.BASE_DIR / 'roblox' / 'ReneGiftCodes.lua').read_text(encoding='utf-8')
+        name = 'ReneStats.server.lua' if request.args.get('name') == 'stats' else 'ReneGiftCodes.lua'
+        text = (core.BASE_DIR / 'roblox' / name).read_text(encoding='utf-8')
         base = giftcodes.public_base_url() or request.host_url.rstrip('/')
         return jsonify({'script': text.replace('https://ton-service.onrender.com', base)})
 

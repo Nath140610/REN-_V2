@@ -3,8 +3,8 @@
 Deux sources se complètent :
   * l'API publique de Roblox (sans clé) : joueurs en ligne, visites, favoris, votes, serveurs publics ;
     René la relève toutes les 10 minutes pour garder l'historique des joueurs connectés ;
-  * le module Luau ReneGiftCodes : chaque serveur du jeu envoie toutes les minutes la liste de ses joueurs
-    (POST /api/roblox/heartbeat). René en tire les joueurs uniques, le temps de jeu et les plus actifs.
+  * le Script serveur Luau ReneStats : chaque serveur du jeu envoie toutes les minutes, à chaque arrivée
+    et à chaque départ la liste de ses joueurs (POST /api/roblox/heartbeat). René en tire les joueurs uniques, le temps de jeu et les plus actifs.
 
 Les données détaillées par joueur sont gardées 31 jours, les totaux par jour 100 jours.
 """
@@ -301,6 +301,12 @@ async def heartbeat(raw: dict) -> dict:
         else:
             entry[1] += 1
             bucket['sessions'] += 1
+    # Joueurs qui viennent de partir : leur temps depuis le dernier envoi est compté.
+    left = raw.get('left') if isinstance(raw.get('left'), list) else []
+    for uid in {str(u).strip() for u in left[:MAX_PLAYERS_PER_SERVER]}:
+        if previous and uid in previous['players'] and uid not in players and uid in per_day:
+            per_day[uid][0] += round(elapsed)
+            bucket['seconds'] += round(elapsed)
     if raw.get('closing'):
         servers.pop(job, None)
     else:

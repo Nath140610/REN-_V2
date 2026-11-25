@@ -80,6 +80,21 @@ class RobloxStatsTest(unittest.TestCase):
         self.assertEqual(result['online']['players'], 7)
         self.assertEqual(len(result['daily']), 30)
 
+    def test_leaving_player_keeps_last_minute(self):
+        self.beat([('1', 'Lea'), ('2', 'Hugo')], job='job-d')
+        self.clock[0] += 40
+        self.beat([('1', 'Lea')], job='job-d', left=['2'])
+        self.clock[0] += 60
+        self.beat([('1', 'Lea')], job='job-d')
+        day = robloxstats.game_store('christmasrun')['players'][robloxstats.today()]
+        self.assertEqual(day['2'], [40, 1])
+        self.assertEqual(day['1'], [100, 1])
+
+    def test_stats_script_can_be_copied(self):
+        text = (core.BASE_DIR / 'roblox' / 'ReneStats.server.lua').read_text(encoding='utf-8')
+        self.assertIn('/api/roblox/heartbeat', text)
+        self.assertIn('left = left', text)
+
     def test_closing_server_disappears(self):
         self.beat([('1', 'Lea')], job='job-c')
         self.assertIn('job-c', robloxstats.online('christmasrun'))
