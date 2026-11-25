@@ -698,3 +698,360 @@ $('#guild-select').onchange = () => {
   pollState.channelsFor = '';
   previousGuildChangePolls();
 };
+
+/* ---------- Statistiques ---------- */
+
+const statsState = {days: 30};
+const pct = value => value == null ? '—' : `${value} %`;
+
+function humanDuration(seconds) {
+  if (seconds == null) return '—';
+  if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
+  if (seconds < 86400) { const h = Math.floor(seconds / 3600); const m = Math.round(seconds % 3600 / 60); return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`; }
+  return `${Math.round(seconds / 86400)} j`;
+}
+
+function statCard(label, value, sub, icon, delta = null, inverse = false) {
+  const card = metric(label, value, sub, icon);
+  if (delta != null) {
+    const good = inverse ? delta <= 0 : delta >= 0;
+    const pill = el('span', `delta ${delta === 0 ? 'flat' : good ? 'up' : 'down'}`, `${delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} ${Math.abs(delta)} %`);
+    pill.title = 'Par rapport à la période précédente';
+    card.querySelector('strong').append(pill);
+  }
+  return card;
+}
+
+function svgNode(tag, attrs, parent) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  parent.append(node);
+  return node;
+}
+
+function lineChart(host, rows, key) {
+  host.replaceChildren();
+  const values = rows.map(row => row[key]);
+  const w = 620, h = 170, top = 10, max = Math.max(1, ...values);
+  const svg = svgNode('svg', {viewBox: '0 0 650 225', preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Messages par jour'}, host);
+  const defs = svgNode('defs', {}, svg);
+  const grad = svgNode('linearGradient', {id: 'stats-area', x1: 0, x2: 0, y1: 0, y2: 1}, defs);
+  svgNode('stop', {offset: '0%', 'stop-color': '#965AFF', 'stop-opacity': '.32'}, grad);
+  svgNode('stop', {offset: '100%', 'stop-color': '#286EFF', 'stop-opacity': '0'}, grad);
+  const stroke = svgNode('linearGradient', {id: 'stats-line', x1: 0, x2: 1, y1: 0, y2: 0}, defs);
+  [['0%', '#286EFF'], ['50%', '#965AFF'], ['100%', '#FF46AA']].forEach(([o, c]) => svgNode('stop', {offset: o, 'stop-color': c}, stroke));
+  for (let i = 0; i < 4; i++) {
+    const y = top + i * (h / 3);
+    svgNode('line', {x1: 0, x2: w, y1: y, y2: y}, svg);
+    svgNode('text', {x: w + 8, y: y + 4}, svg).textContent = fmt(max * (3 - i) / 3);
+  }
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  const d = values.map((v, i) => `${i ? 'L' : 'M'} ${(i * step).toFixed(1)} ${(top + h - v / max * h).toFixed(1)}`).join(' ');
+  svgNode('path', {d: `${d} L ${w} ${top + h} L 0 ${top + h} Z`, fill: 'url(#stats-area)'}, svg);
+  svgNode('path', {d, fill: 'none', stroke: 'url(#stats-line)', 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}, svg);
+  const marks = [0, Math.floor((rows.length - 1) / 2), rows.length - 1];
+  for (const i of marks) {
+    const label = svgNode('text', {x: i * step, y: 215, 'text-anchor': i === 0 ? 'start' : i === rows.length - 1 ? 'end' : 'middle'}, svg);
+    label.textContent = new Date(`${rows[i].date}T12:00:00`).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'});
+  }
+}
+
+function barChart(host, rows, series) {
+  host.replaceChildren();
+  const max = Math.max(1, ...rows.flatMap(row => series.map(s => s.value(row))));
+  for (const row of rows) {
+    const group = el('div', 'flow-group');
+    group.title = `${date(row.date)} · ${series.map(s => `${s.label} : ${s.format ? s.format(s.value(row)) : fmt(s.value(row))}`).join(' · ')}`;
+    for (const s of series) {
+      const bar = el('div', `flow-bar ${s.className}`);
+      bar.style.height = `${Math.max(s.value(row) ? 4 : 1, s.value(row) / max * 100)}%`;
+      group.append(bar);
+    }
+    host.append(group);
+  }
+}
+
+function weekdayChart(host, weekdays) {
+  host.replaceChildren();
+  const max = Math.max(1, ...weekdays.map(d => d.messages));
+  const best = Math.max(...weekdays.map(d => d.messages));
+  for (const day of weekdays) {
+    const col = el('div', `weekday ${day.messages && day.messages === best ? 'best' : ''}`);
+    const track = el('div', 'weekday-track');
+    const bar = el('div', 'weekday-bar');
+    bar.style.height = `${Math.max(3, day.messages / max * 100)}%`;
+    track.append(bar);
+    col.append(el('small', 'weekday-value', fmt(day.messages)), track, el('span', '', day.day));
+    host.append(col);
+  }
+}
+
+function topList(host, items, format) {
+  host.replaceChildren(...items.map((item, i) => {
+    const row = el('div', 'top-row');
+    row.append(el('span', 'rank', String(i + 1)), Object.assign(el('img', 'avatar'), {src: item.avatar, alt: ''}));
+    const main = el('div', 'row-main');
+    main.append(el('strong', '', item.name));
+    row.append(main, el('span', 'row-value', format(item.value)));
+    return row;
+  }));
+  if (!items.length) empty(host, 'Pas encore de données sur cette période.');
+}
+
+function funnel(host, g) {
+  host.replaceChildren();
+  host.append(el('h3', '', 'Parcours des cartes'));
+  const steps = [['Envoyées', g.cards], ['Ouvertes', g.opened], ['Grattées', g.scratched], ['Utilisées', g.used]];
+  const max = Math.max(1, g.cards);
+  for (const [label, value] of steps) {
+    const row = el('div', 'poll-row');
+    const top = el('div', 'poll-label');
+    top.append(el('span', 'poll-text', label), el('span', 'poll-count', `${fmt(value)} · ${Math.round(value / max * 100)} %`));
+    const track = el('div', 'poll-track');
+    const fill = el('div', 'poll-fill');
+    track.append(fill);
+    row.append(top, track);
+    host.append(row);
+    requestAnimationFrame(() => { fill.style.width = `${Math.min(100, value / max * 100)}%`; });
+  }
+  host.append(el('p', 'footnote', `Délai moyen entre l’envoi et le grattage : ${humanDuration(g.avg_scratch_seconds)} · ${fmt(g.assistance)} code(s) activé(s) par l’assistance.`));
+}
+
+async function loadStats() {
+  const data = await api(`/api/guild/${state.guild}/stats?days=${statsState.days}`);
+  const c = data.community, a = data.activity, m = data.moderation, t = data.tickets, g = data.gifts;
+  $('#stats-coverage').textContent = data.tracked_days < data.days
+    ? `Suivi depuis ${fmt(data.tracked_days)} jour(s) : période incomplète.`
+    : data.has_previous ? 'Comparé à la période précédente.' : '';
+  $('#stats-community').replaceChildren(
+    statCard('Membres', fmt(c.members), `${fmt(c.humans)} humains · ${fmt(c.online)} en ligne`, '♙'),
+    statCard('Arrivées', fmt(c.joins), `${statsState.days} jours`, '↗', c.joins_change),
+    statCard('Départs', fmt(c.leaves), `${statsState.days} jours`, '↘', c.leaves_change, true),
+    statCard('Solde', `${c.net > 0 ? '+' : ''}${fmt(c.net)}`, c.net >= 0 ? 'le serveur grandit' : 'plus de départs', '±'),
+  );
+  $('#stats-activity').replaceChildren(
+    statCard('Messages', fmt(a.messages), `${String(a.per_day).replace('.', ',')} par jour`, '❝', a.messages_change),
+    statCard('Membres actifs', fmt(a.active), `${pct(a.active_rate)} des humains`, '◉', a.active_change),
+    statCard('Vocal', `${String(a.voice_hours).replace('.', ',')} h`, `${fmt(a.voice_per_active_min)} min par actif`, '◎', a.voice_change),
+    statCard('Record', a.busiest ? fmt(a.busiest.messages) : '—', a.busiest ? `messages le ${date(a.busiest.date)}` : 'pas encore de messages', '★'),
+  );
+  $('#stats-busiest').textContent = `${statsState.days} jours`;
+  lineChart($('#stats-messages-chart'), data.daily, 'messages');
+  weekdayChart($('#stats-weekdays'), a.weekdays);
+  barChart($('#stats-flow'), data.daily, [
+    {label: 'Arrivées', className: 'blue', value: row => row.joins},
+    {label: 'Départs', className: 'pink', value: row => row.leaves},
+  ]);
+  barChart($('#stats-voice'), data.daily, [
+    {label: 'Vocal', className: 'violet', value: row => row.voice_seconds / 3600, format: v => `${v.toFixed(1)} h`},
+  ]);
+  topList($('#stats-top-messages'), data.top_messages, v => `${fmt(v)} msg`);
+  topList($('#stats-top-voice'), data.top_voice, v => humanDuration(v));
+  const reasons = Object.entries(m.reasons).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(' · ') || 'aucun';
+  $('#stats-moderation').replaceChildren(
+    statCard('Avertissements', fmt(m.warnings), reasons, '⚠', m.warnings_change, true),
+    statCard('Bannissements', fmt(m.bans), `${fmt(m.tempbans_now)} en cours · ${fmt(m.members_with_warnings)} membres avertis`, '⚒'),
+    statCard('Tickets', fmt(t.received), `${fmt(t.answered)} répondus · ${fmt(t.open)} ouverts`, '✉'),
+    statCard('Temps de réponse', humanDuration(t.avg_response_seconds), `${fmt(t.by_rene)} réponse(s) de René`, '⏱'),
+  );
+  $('#stats-gifts').replaceChildren(
+    statCard('Cartes envoyées', fmt(g.cards), `${statsState.days} jours`, '◇'),
+    statCard('Ouverture', pct(g.open_rate), `${fmt(g.opened)} lien(s) ouvert(s)`, '◎'),
+    statCard('Grattage', pct(g.scratch_rate), `${fmt(g.scratched)} carte(s) grattée(s)`, '✦'),
+    statCard('Utilisés dans Roblox', fmt(g.used), `${pct(g.use_rate)} des grattés · ${fmt(g.expired_unused)} expirés`, '✓'),
+  );
+  funnel($('#stats-funnel'), g);
+  const p = data.polls, r = data.appointments;
+  $('#stats-other').replaceChildren(
+    statCard('Sondages', fmt(p.count), `${fmt(p.votes)} vote(s)`, '▥'),
+    statCard('Rendez-vous', fmt(r.count), `${fmt(r.accepted)} accepté(s)`, '▣'),
+    statCard('Absences', fmt(r.no_show), `${pct(r.no_show_rate)} des rendez-vous acceptés`, '✕'),
+    statCard('Suivi', `${fmt(data.tracked_days)} j`, `depuis le ${date(data.since)}`, '◷'),
+  );
+}
+
+for (const button of document.querySelectorAll('#stats-period button')) {
+  button.onclick = () => {
+    statsState.days = Number(button.dataset.days);
+    for (const other of document.querySelectorAll('#stats-period button')) other.classList.toggle('active', other === button);
+    loadStats().catch(error => notice(error.message, true));
+  };
+}
+
+/* ---------- MP à tous les membres ---------- */
+
+const broadcastState = {rolesFor: '', roles: [], humans: 0, timer: null};
+
+function broadcastTarget() {
+  const id = $('#broadcast-role').value;
+  if (!id) return broadcastState.humans;
+  return broadcastState.roles.find(role => role.id === id)?.members ?? 0;
+}
+
+function updateBroadcastCount() {
+  $('#broadcast-count').textContent = `${fmt(broadcastTarget())} destinataire(s)`;
+}
+
+function renderBroadcast(data) {
+  broadcastState.humans = data.humans;
+  updateBroadcastCount();
+  const job = data.job;
+  const running = data.running;
+  $('#broadcast-progress').classList.toggle('hidden', !job);
+  $('#broadcast-form').querySelector('button[type=submit]').disabled = running;
+  if (job) {
+    const share = job.total ? Math.round(job.done / job.total * 100) : 0;
+    const states = {running: 'Envoi en cours', finished: 'Envoi terminé', cancelled: 'Envoi arrêté', error: 'Envoi interrompu'};
+    $('#broadcast-label').textContent = `${states[job.state] || job.state} · ${job.role_name}`;
+    $('#broadcast-numbers').textContent = `${fmt(job.done)} / ${fmt(job.total)} · ${fmt(job.sent)} reçus · ${fmt(job.failed)} MP fermés`;
+    $('#broadcast-fill').style.width = `${share}%`;
+    $('#broadcast-cancel').classList.toggle('hidden', !running);
+  }
+  const host = $('#broadcast-history');
+  host.replaceChildren(...data.history.filter(item => !job || item.id !== job.id || !running).slice(0, 5).map(item => {
+    const row = el('div', 'list-row');
+    row.append(el('span', 'audit-icon', '✉'));
+    const main = el('div', 'row-main');
+    main.append(el('strong', '', item.preview), el('small', '', `${item.role_name} · ${when(item.started_at)} · ${fmt(item.sent)} reçus sur ${fmt(item.total)}`));
+    row.append(main);
+    return row;
+  }));
+  clearTimeout(broadcastState.timer);
+  if (running) broadcastState.timer = setTimeout(() => { if (state.view === 'messages') loadBroadcast(true).catch(() => {}); }, 2000);
+}
+
+async function loadBroadcast(quiet = false) {
+  if (!quiet && broadcastState.rolesFor !== state.guild) {
+    broadcastState.roles = (await api(`/api/guild/${state.guild}/roles`)).items;
+    const select = $('#broadcast-role');
+    select.replaceChildren(Object.assign(el('option', '', 'Tous les membres'), {value: ''}),
+      ...broadcastState.roles.map(role => Object.assign(el('option', '', `${role.name} (${role.members})`), {value: role.id})));
+    broadcastState.rolesFor = state.guild;
+  }
+  renderBroadcast(await api(`/api/guild/${state.guild}/broadcast`));
+}
+
+$('#broadcast-role').onchange = updateBroadcastCount;
+$('#broadcast-form').onsubmit = async event => {
+  event.preventDefault();
+  const message = $('#broadcast-message').value.trim();
+  if (!message) return;
+  const total = broadcastTarget();
+  const minutes = Math.max(1, Math.round(total * 1.5 / 60));
+  if (!window.confirm(`Envoyer ce message en MP à ${total} membre(s) ?\nDurée estimée : ${minutes} min. Tu pourras arrêter l’envoi.`)) return;
+  const result = await withButton(event.target.querySelector('button[type=submit]'), () => post(`/api/guild/${state.guild}/broadcast`, {
+    message, role_id: $('#broadcast-role').value,
+  }));
+  if (result) { $('#broadcast-message').value = ''; await loadBroadcast(true); }
+};
+$('#broadcast-cancel').onclick = async () => {
+  if (!window.confirm('Arrêter l’envoi ? Ceux qui l’ont déjà reçu le gardent.')) return;
+  if (await withButton($('#broadcast-cancel'), () => post(`/api/guild/${state.guild}/broadcast/cancel`))) await loadBroadcast(true);
+};
+
+/* ---------- Demandes de l'assistance ---------- */
+
+const assistState = {items: [], filter: 'all', text: ''};
+const ASSIST_SEEN = 'rene_assist_seen';
+
+function assistCard(item) {
+  const ok = item.outcome === 'accepted';
+  const card = el('article', `card ticket assist-request ${ok ? 'ok' : 'no'}`);
+  const head = el('div', 'ticket-head');
+  head.append(el('span', `audit-icon ${ok ? 'blue' : ''}`, ok ? '✓' : '✕'));
+  const who = el('div', 'row-main');
+  who.append(el('strong', '', `${item.signature} · ${item.member_name}`), el('small', '', `@${item.member_username} · demande du ${when(item.created_at)}`));
+  head.append(who, el('span', `pill ${ok ? '' : 'fail'}`, ok ? 'Activé 24 h' : 'Refusé'));
+  const details = el('div', 'assist-details');
+  const line = (label, value) => { const row = el('div'); row.append(el('small', '', label), el('span', '', value)); details.append(row); };
+  line('Code', item.code);
+  line('Problème le', when(item.incident_at));
+  line('Raison', item.reason);
+  line('Résultat', ok ? `Activé jusqu’au ${when(item.expires_at)}` : item.detail.replace(/^Impossible : (.)/, (_, first) => first.toUpperCase()));
+  if (!ok && item.same_member === false) line('Attention', 'Ce code appartient à un autre membre.');
+  details.querySelector('span').className = 'gift-code';
+  card.append(head, details);
+  return card;
+}
+
+function renderAssistance() {
+  const needle = assistState.text.toLowerCase();
+  const items = assistState.items.filter(item =>
+    (assistState.filter === 'all' || item.outcome === assistState.filter) &&
+    (!needle || [item.code, item.member_name, item.member_username, item.signature, item.reason].some(v => String(v || '').toLowerCase().includes(needle))));
+  const host = $('#assist-list');
+  host.replaceChildren(...items.map(assistCard));
+  if (!items.length) empty(host, assistState.items.length ? 'Aucune demande ne correspond.' : 'L’assistance n’a encore rien demandé.');
+}
+
+function updateAssistBadge(items) {
+  let seen = '';
+  try { seen = localStorage.getItem(ASSIST_SEEN) || ''; } catch {}
+  const fresh = items.filter(item => item.created_at > seen).length;
+  const badge = $('#assist-badge');
+  badge.textContent = fresh > 99 ? '99+' : String(fresh);
+  badge.classList.toggle('hidden', !fresh || state.view === 'assistance');
+}
+
+async function loadAssistance() {
+  const data = await api(`/api/guild/${state.guild}/assistance`);
+  assistState.items = data.items;
+  $('#assist-stats').replaceChildren(
+    metric('Demandes', fmt(data.total), `${fmt(data.today)} aujourd’hui`, '✚'),
+    metric('Codes activés', fmt(data.accepted), 'pendant 24 h', '✓'),
+    metric('Refusées', fmt(data.refused), 'code déjà existant', '✕'),
+    metric('Assistants', fmt(new Set(data.items.map(item => item.signature.toLowerCase())).size), 'signatures différentes', '✎'),
+  );
+  if (data.items[0]) { try { localStorage.setItem(ASSIST_SEEN, data.items[0].created_at); } catch {} }
+  updateAssistBadge(data.items);
+  renderAssistance();
+}
+
+$('#assist-filter-text').oninput = event => { assistState.text = event.target.value.trim(); renderAssistance(); };
+for (const button of document.querySelectorAll('#assist-filter button')) {
+  button.onclick = () => {
+    assistState.filter = button.dataset.filter;
+    for (const other of document.querySelectorAll('#assist-filter button')) other.classList.toggle('active', other === button);
+    renderAssistance();
+  };
+}
+
+function refreshAssistBadge() {
+  if (!state.csrf || !state.guild || state.view === 'assistance') return;
+  api(`/api/guild/${state.guild}/assistance`).then(data => updateAssistBadge(data.items)).catch(() => {});
+}
+setInterval(() => { if (!document.hidden) refreshAssistBadge(); }, 90000);
+setTimeout(refreshAssistBadge, 5000);
+
+/* ---------- Réglages : accès Assistance ---------- */
+
+const assistAccess = {password: '', shown: false, url: ''};
+function renderAssistAccess() {
+  $('#assist-url').textContent = assistAccess.url;
+  $('#assist-password-view').textContent = !assistAccess.password ? 'Aucun : crée-en un pour ouvrir l’assistance.'
+    : assistAccess.shown ? assistAccess.password : '••••••••••••';
+  $('#assist-show').textContent = assistAccess.shown ? 'Masquer' : 'Afficher';
+  $('#assist-regenerate').textContent = assistAccess.password ? 'Nouveau mot de passe' : 'Créer un mot de passe';
+}
+async function loadAssistAccess() {
+  const data = await api('/api/system/assistance');
+  Object.assign(assistAccess, {password: data.password || '', url: data.url});
+  $('#assist-regenerate').classList.toggle('hidden', data.from_env);
+  renderAssistAccess();
+}
+const loadSettingsWithRoblox = loadSettings;
+loadSettings = async () => { await Promise.all([loadSettingsWithRoblox(), loadAssistAccess()]); };
+$('#assist-show').onclick = () => { assistAccess.shown = !assistAccess.shown; renderAssistAccess(); };
+$('#assist-copy-url').onclick = () => copyText(assistAccess.url, 'Lien de l’assistance copié.');
+$('#assist-copy-password').onclick = () => assistAccess.password ? copyText(assistAccess.password, 'Mot de passe copié.') : notice('Crée d’abord un mot de passe.', true);
+$('#assist-regenerate').onclick = async () => {
+  if (assistAccess.password && !window.confirm('Créer un nouveau mot de passe ? Les assistants connectés seront déconnectés.')) return;
+  const result = await withButton($('#assist-regenerate'), () => post('/api/system/assistance'));
+  if (result) { assistAccess.password = result.password; assistAccess.shown = true; renderAssistAccess(); }
+};
+
+const previousGuildChangeStats = $('#guild-select').onchange;
+$('#guild-select').onchange = () => {
+  broadcastState.rolesFor = '';
+  previousGuildChangeStats();
+};

@@ -113,7 +113,7 @@ def card_status(entry: dict, now: datetime | None = None) -> str:
         return "replaced"
     if entry.get("used_at"):
         return "used"
-    if not entry.get("card_token"):
+    if not entry.get("card_token") and entry.get("source") != "assistance":
         return "legacy"
     if entry.get("delivery_status") == "dm_failed":
         return "dm_failed"

@@ -22,7 +22,7 @@ from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
-from rene import polls, robloxapi
+from rene import assistance, broadcast, polls, robloxapi, stats
 from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
@@ -722,6 +722,7 @@ def install_panel(app):
     app._rene_panel_installed = True
     install_giftcard(app, lambda coro, timeout=20: run(coro, timeout))
     robloxapi.install_roblox_api(app, lambda coro, timeout=20: run(coro, timeout))
+    assistance.install_assistance(app, lambda coro, timeout=20: run(coro, timeout))
 
     @app.after_request
     def security_headers(resp):
@@ -849,6 +850,62 @@ def install_panel(app):
         if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
             abort(404)
         return response(lambda: run(resend_gift(positive_id(guild_id), code), 40))
+
+    @app.get('/api/guild/<guild_id>/stats')
+    def detailed_stats(guild_id):
+        protected()
+        try:
+            days = int(request.args.get('days', '30'))
+        except ValueError:
+            days = 30
+        days = days if days in (7, 30, 90) else 30
+        return response(lambda: run(stats.build(guild_for(positive_id(guild_id)), days), 30))
+
+    @app.get('/api/guild/<guild_id>/broadcast')
+    def broadcast_status(guild_id):
+        protected()
+        async def get():
+            return broadcast.status(guild_for(positive_id(guild_id)))
+        return response(lambda: run(get()))
+
+    @app.post('/api/guild/<guild_id>/broadcast')
+    def broadcast_start(guild_id):
+        protected()
+        data = payload()
+        role = str(data.get('role_id') or '')
+        return response(lambda: run(broadcast.start(guild_for(positive_id(guild_id)), str(data.get('message', '')),
+                                                    int(positive_id(role)) if role else None), 30))
+
+    @app.post('/api/guild/<guild_id>/broadcast/cancel')
+    def broadcast_cancel(guild_id):
+        protected()
+        return response(lambda: run(broadcast.cancel(guild_for(positive_id(guild_id)))))
+
+    @app.get('/api/guild/<guild_id>/assistance')
+    def assistance_requests(guild_id):
+        protected()
+        async def get():
+            return assistance.list_requests(guild_for(positive_id(guild_id)).id)
+        return response(lambda: run(get()))
+
+    @app.get('/api/system/assistance')
+    def assistance_settings():
+        protected()
+        return jsonify({'password': assistance.password(), 'from_env': assistance.password_from_env(),
+                        'url': (giftcodes.public_base_url() or request.host_url.rstrip('/')) + '/assistance'})
+
+    @app.post('/api/system/assistance')
+    def assistance_regenerate():
+        protected()
+        if assistance.password_from_env():
+            return jsonify({'error': 'Le mot de passe vient de ASSISTANCE_PASSWORD sur Render.'}), 400
+        value = assistance.regenerate_password()
+        if core.bot.is_ready() and not core.bot.is_closed():
+            run(core.save_state_immediately(), 30)
+        else:
+            core.save_runtime_json(core.CONFIG_FILE, core.bot.config_data)
+        return jsonify({'ok': True, 'password': value,
+                        'message': 'Nouveau mot de passe créé. Les assistants connectés sont déconnectés.'})
 
     @app.get('/api/guild/<guild_id>/bad-words')
     def list_bad_words(guild_id):

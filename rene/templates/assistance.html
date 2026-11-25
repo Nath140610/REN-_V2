@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#000000"><meta name="color-scheme" content="dark"><meta name="robots" content="noindex,nofollow"><title>Assistance · René</title><link rel="stylesheet" href="/static/panel.css"><link rel="stylesheet" href="/static/panel-extra.css"><link rel="stylesheet" href="/static/assist.css"></head>
+<body>
+<div id="assist-boot" class="boot"><div class="boot-card"><div class="halo-avatar breathing"><img src="/assets/REFLECHIS.png" alt="René"></div><h1>Assistance</h1><p id="assist-boot-text">Connexion…</p><div class="ribbon hello" aria-hidden="true"><i></i><span></span></div></div></div>
+
+<div id="assist-login" class="login hidden"><div class="login-card"><div class="halo-avatar breathing"><img src="/assets/IDLE.png" alt="René"></div><h1>Assistance</h1><p id="assist-login-text">Entre le mot de passe donné par le staff.</p><form id="assist-login-form"><input id="assist-password" type="password" autocomplete="current-password" required placeholder="Mot de passe" aria-label="Mot de passe de l’assistance"><button class="button primary wide" type="submit">Se connecter</button></form><div id="assist-login-error" class="error" role="alert"></div></div></div>
+
+<div id="assist-app" class="hidden">
+<header class="topbar"><span class="crumb assist-brand"><span class="halo-avatar tiny"><img src="/assets/IDLE.png" alt=""></span>Assistance René</span><div class="top-actions"><select id="assist-guild" class="hidden" aria-label="Serveur Discord"></select><button id="assist-logout" class="link-button" type="button">Se déconnecter</button></div></header>
+<div class="content assist-content">
+  <div class="page-heading"><h1>Code cadeau</h1><p>Un membre n’arrive pas à utiliser son code ? Vérifie-le ici.</p></div>
+  <div id="notice" class="notice hidden" role="status"></div>
+
+  <form id="assist-form" class="card panel-form assist-form" novalidate>
+    <div class="field member-picker" id="assist-picker">
+      <label for="assist-member">Pseudo Discord</label>
+      <input id="assist-member" type="search" placeholder="Cherche le membre" autocomplete="off" required>
+      <input id="assist-member-id" type="hidden">
+      <div id="assist-results" class="picker-results"></div>
+      <div id="assist-selected" class="picker-selected"></div>
+    </div>
+    <div class="field"><label for="assist-code">Code cadeau</label><input id="assist-code" class="code-input" maxlength="24" placeholder="VOID-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" required></div>
+    <div class="field"><label for="assist-reason">Raison</label><textarea id="assist-reason" rows="3" maxlength="500" placeholder="Ce qui ne marche pas, d’après le membre" required></textarea></div>
+    <div class="field"><label for="assist-date">Date et heure du problème</label><input id="assist-date" type="datetime-local" required></div>
+    <div class="field"><label for="assist-signature">Signature</label><input id="assist-signature" maxlength="60" placeholder="Ton nom" autocomplete="off" required></div>
+    <button id="assist-submit" class="button primary" type="submit">Vérifier le code</button>
+  </form>
+
+  <div id="assist-result" class="card assist-result hidden" role="status"><div class="result-icon" id="assist-result-icon"></div><div><h2 id="assist-result-title"></h2><p id="assist-result-text"></p></div><button id="assist-again" class="button subtle" type="button">Nouvelle demande</button></div>
+
+  <p class="section-label">TES DEMANDES</p>
+  <div class="card list-card"><div id="assist-history"></div></div>
+  <p class="footnote">Un code absent de la base est ajouté et activé 24 h. Un code déjà présent, utilisé ou non, est toujours refusé. Chaque demande est enregistrée avec ta signature.</p>
+</div>
+</div>
+<script src="/static/assist.js" defer></script>
+</body></html>
