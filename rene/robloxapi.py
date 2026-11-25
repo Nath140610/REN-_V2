@@ -6,7 +6,11 @@ Statuts renvoyés (champ ``status``) :
   used      : déjà utilisé dans Roblox
   expired   : gratté il y a plus de 24 h
   replaced  : ancien code remplacé par une carte
+  no_reward : code valable mais gain pas encore défini dans le panel
+  wrong_game: code prévu pour un autre jeu (paramètre ``game``)
   unknown   : code inexistant
+
+Chaque réponse contient ``reward`` : jeu, type de gain, quantités (glings, gifts), gamepass.
 """
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ from datetime import datetime, timezone
 
 from flask import jsonify, request
 
-from rene import analytics, core
+from rene import analytics, core, rewards
 from rene.commands import sendgiftcode as gifts
 
 KEY_STORE = '_roblox_api_key'
@@ -31,6 +35,8 @@ LABELS = {
     'expired': 'Expiré : plus de 24 h après le grattage.',
     'replaced': 'Remplacé par une nouvelle carte.',
     'unknown': 'Code inconnu.',
+    'no_reward': 'Le gain de ce code n’est pas encore défini par le staff.',
+    'wrong_game': 'Ce code est prévu pour un autre jeu.',
 }
 failures: dict[str, list[float]] = {}
 
@@ -64,9 +70,27 @@ def roblox_status(entry: dict | None, now: datetime | None = None) -> str:
             'dm_failed': 'inactive'}.get(card, card)
 
 
-def describe(code: str, entry: dict | None) -> dict:
-    now = datetime.now(timezone.utc)
+def normalize_game(raw) -> str | None:
+    game = str(raw or '').strip().lower().replace(' ', '')
+    return game or None
+
+
+def game_status(entry: dict | None, game: str | None = None, now: datetime | None = None) -> str:
+    """Statut vu par un jeu précis : un code disponible doit avoir un gain, et le bon jeu."""
     status = roblox_status(entry, now)
+    if status != 'available':
+        return status
+    reward = entry.get('reward') if isinstance(entry, dict) else None
+    if not isinstance(reward, dict):
+        return 'no_reward'
+    if game and reward.get('game') != game:
+        return 'wrong_game'
+    return status
+
+
+def describe(code: str, entry: dict | None, game: str | None = None) -> dict:
+    now = datetime.now(timezone.utc)
+    status = game_status(entry, game, now)
     result = {'code': code, 'status': status, 'label': LABELS[status],
               'activated': status in {'available', 'used', 'expired'},
               'available': status == 'available', 'used': status == 'used'}
@@ -81,22 +105,25 @@ def describe(code: str, entry: dict | None) -> dict:
         'recipient_roblox_name': linked,
         'used_at': entry.get('used_at'), 'used_by_roblox_id': entry.get('used_by_roblox_id'),
         'used_by_roblox_name': entry.get('used_by_roblox_name'),
+        'game': (entry.get('reward') or {}).get('game') if isinstance(entry.get('reward'), dict) else None,
+        'reward': rewards.public(entry.get('reward')),
     })
     return result
 
 
-async def check_code(code: str) -> dict:
-    return describe(code, gifts.gift_store().get(code))
+async def check_code(code: str, game: str | None = None) -> dict:
+    return describe(code, gifts.gift_store().get(code), game)
 
 
-async def redeem_code(code: str, roblox_id: str, roblox_name: str, place_id: str) -> tuple[dict, bool]:
+async def redeem_code(code: str, roblox_id: str, roblox_name: str, place_id: str,
+                      game: str | None = None) -> tuple[dict, bool]:
     # Exécuté sur la boucle du bot : deux serveurs Roblox ne peuvent pas consommer le même code.
     entry = gifts.gift_store().get(code)
-    if roblox_status(entry) != 'available':
-        return describe(code, entry), False
+    if game_status(entry, game) != 'available':
+        return describe(code, entry, game), False
     now = datetime.now(timezone.utc).isoformat()
     entry.update({'used_at': now, 'used_by_roblox_id': roblox_id, 'used_by_roblox_name': roblox_name,
-                  'used_place_id': place_id})
+                  'used_place_id': place_id, 'used_game': game})
     try:
         analytics.audit(int(entry['guild_id']), 'gift',
                         f'Code {code} utilisé dans Roblox par {roblox_name or roblox_id}')
@@ -104,7 +131,7 @@ async def redeem_code(code: str, roblox_id: str, roblox_name: str, place_id: str
         core.logger.exception('Audit Roblox impossible')
     await core.save_state_immediately()
     core.logger.info('ROBLOX : code %s utilisé par %s (%s).', code, roblox_name, roblox_id)
-    return describe(code, entry), True
+    return describe(code, entry, game), True
 
 
 def install_roblox_api(app, run) -> None:
@@ -135,9 +162,10 @@ def install_roblox_api(app, run) -> None:
         if refused:
             return refused
         code = normalize(raw)
+        game = normalize_game(request.args.get('game'))
         if not CODE_PATTERN.match(code):
             return jsonify(describe(code, None))
-        return jsonify(run(check_code(code)))
+        return jsonify(run(check_code(code, game)))
 
     @app.post('/api/roblox/redeem')
     def roblox_redeem():
@@ -152,5 +180,7 @@ def install_roblox_api(app, run) -> None:
             return jsonify({'error': 'roblox_user_id manquant.'}), 400
         if not CODE_PATTERN.match(code):
             return jsonify(dict(describe(code, None), redeemed=False)), 404
-        result, redeemed = run(redeem_code(code, roblox_id, roblox_name, (str(data.get('place_id', '')) or request.headers.get('Roblox-Id', ''))[:20]))
+        place_id = (str(data.get('place_id', '')) or request.headers.get('Roblox-Id', ''))[:20]
+        result, redeemed = run(redeem_code(code, roblox_id, roblox_name, place_id,
+                                           normalize_game(data.get('game'))))
         return jsonify(dict(result, redeemed=redeemed)), 200 if redeemed else 409

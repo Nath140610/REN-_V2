@@ -22,7 +22,7 @@ from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
-from rene import assistance, broadcast, polls, robloxapi, stats
+from rene import assistance, broadcast, polls, rewards, robloxapi, stats
 from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
@@ -145,7 +145,7 @@ async def search_members(guild_id, query):
 GIFT_FIELDS = ('code', 'recipient_id', 'recipient_name', 'reason', 'created_at', 'delivery_status',
                'card_sent_at', 'opened_at', 'last_seen_at', 'views', 'scratched_at', 'expires_at',
                'replaced_by', 'replaces', 'used_at', 'used_by_roblox_id', 'used_by_roblox_name',
-               'used_place_id', 'used_manually')
+               'used_place_id', 'used_manually', 'reward', 'source', 'distributed_by_name')
 
 
 async def gifts(guild_id):
@@ -162,7 +162,8 @@ async def gifts(guild_id):
         item['recipient_id'] = str(item['recipient_id'] or '')
         item['status'] = status
         items.append(item)
-    return {'total': len(entries), 'counts': counts, 'items': items[:150],
+    missing = sum(1 for e in entries if not isinstance(e.get('reward'), dict) and not e.get('replaced_by'))
+    return {'total': len(entries), 'counts': counts, 'items': items[:300], 'missing_reward': missing,
             'public_url': bool(giftcodes.public_base_url()),
             'note': 'Le code s’affiche sur la carte après grattage et reste valable 24 h. René ne peut pas vérifier son utilisation sur Roblox.'}
 
@@ -294,7 +295,24 @@ async def ban_member(guild_id, user_id, reason):
     return {'ok': True, 'message': f'{member.display_name} a été banni.'}
 
 
-async def send_gift(guild_id, user_id, reason):
+async def set_gift_reward(guild_id, code, reward):
+    guild = guild_for(guild_id)
+    entry = gift_store().get(code)
+    if not isinstance(entry, dict) or str(entry.get('guild_id')) != str(guild.id):
+        raise ValueError('Code introuvable.')
+    if entry.get('replaced_by'):
+        raise ValueError('Ce code a été remplacé : règle le gain sur le nouveau code.')
+    previous = entry.get('reward', {}).get('label') if isinstance(entry.get('reward'), dict) else None
+    entry['reward'] = reward
+    entry['reward_set_at'] = datetime.now(timezone.utc).isoformat()
+    # Aucun MP : le gain est seulement lié au code, pour le jeu.
+    analytics.audit(guild.id, 'gift', f'Gain du code {code} : {reward["label"]}'
+                                      + (f' (avant : {previous})' if previous else ''))
+    await core.save_state_immediately()
+    return {'ok': True, 'reward': reward, 'message': f'Gain enregistré : {reward["label"]}.'}
+
+
+async def send_gift(guild_id, user_id, reason, reward=None):
     guild = guild_for(guild_id)
     member = guild.get_member(int(user_id))
     if member is None or member.bot:
@@ -305,7 +323,10 @@ async def send_gift(guild_id, user_id, reason):
     entry = {'code': code, 'guild_id': guild.id, 'recipient_id': member.id,
              'recipient_name': str(member), 'reason': reason,
              'distributed_by_id': 0, 'distributed_by_name': 'Panel René',
-             'created_at': datetime.now(timezone.utc).isoformat(), 'delivery_status': 'pending'}
+             'created_at': datetime.now(timezone.utc).isoformat(), 'delivery_status': 'pending',
+             'reward': reward}
+    if reward is None:
+        raise ValueError('Choisis le jeu et le gain du cadeau.')
     gift_store()[code] = entry
     await core.save_state_immediately()
     delivered = await send_gift_dm(member, code=code, reason=reason, guild_name=guild.name)
@@ -317,7 +338,7 @@ async def send_gift(guild_id, user_id, reason):
             'message': 'Carte à gratter envoyée en MP.' if delivered else 'Code réservé, mais le MP a échoué.'}
 
 
-async def start_gift_challenge(guild_id, user_id, reason, session_id):
+async def start_gift_challenge(guild_id, user_id, reason, session_id, reward=None):
     guild = guild_for(guild_id)
     member = guild.get_member(int(user_id))
     if member is None or member.bot:
@@ -342,6 +363,7 @@ async def start_gift_challenge(guild_id, user_id, reason, session_id):
             content=(f'🔐 Vérification cadeau René\n'
                      f'Pour : {member.display_name} sur {guild.name}\n'
                      f'Raison : {reason[:200]}\n'
+                     f'Gain : {reward["label"] if reward else "?"}\n'
                      'Scanne ce QR depuis le panel René. Il expire dans 5 minutes.'),
             file=discord.File(buffer, filename='verification-cadeau.png'),
             allowed_mentions=discord.AllowedMentions.none(),
@@ -350,7 +372,7 @@ async def start_gift_challenge(guild_id, user_id, reason, session_id):
         raise ValueError('René ne peut pas envoyer le QR en MP à Nathlepesant.') from None
     gift_challenges[challenge_id] = {
         'token_hash': hashlib.sha256(secret.encode()).digest(),
-        'guild_id': str(guild_id), 'user_id': str(user_id), 'reason': reason,
+        'guild_id': str(guild_id), 'user_id': str(user_id), 'reason': reason, 'reward': reward,
         'session_id': session_id, 'created_at': now, 'expires_at': now + 300,
         'attempts': 0,
     }
@@ -378,7 +400,7 @@ async def confirm_gift_challenge(guild_id, challenge_id, qr_text, session_id):
     # Le jeton est consommé avant l'envoi : un second scan ne peut pas créer
     # un deuxième code cadeau, même si Discord répond lentement.
     gift_challenges.pop(challenge_id, None)
-    return await send_gift(guild_id, challenge['user_id'], challenge['reason'])
+    return await send_gift(guild_id, challenge['user_id'], challenge['reason'], challenge.get('reward'))
 
 
 def moderatable(guild, user_id):
@@ -1136,7 +1158,20 @@ def install_panel(app):
         if not reason:
             return jsonify({'error': 'Indique la raison du cadeau.'}), 400
         return response(lambda: run(start_gift_challenge(positive_id(guild_id),
-            positive_id(data.get('user_id')), reason, user['sid']), 40))
+            positive_id(data.get('user_id')), reason, user['sid'], rewards.clean(data.get('reward'))), 40))
+
+    @app.get('/api/rewards')
+    def reward_catalog():
+        protected()
+        return jsonify({'games': rewards.catalog()})
+
+    @app.post('/api/guild/<guild_id>/gifts/<code>/reward')
+    def gift_reward(guild_id, code):
+        protected()
+        if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
+            abort(404)
+        return response(lambda: run(set_gift_reward(positive_id(guild_id), code,
+                                                    rewards.clean(payload().get('reward'))), 30))
 
     @app.post('/api/guild/<guild_id>/gift/confirm')
     def gift_confirm(guild_id):

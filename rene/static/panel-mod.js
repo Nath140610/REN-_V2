@@ -312,7 +312,9 @@ function giftRow(entry) {
   else if (entry.scratched_at) step = `grattée le ${when(entry.scratched_at)}`;
   else if (entry.opened_at) step = `lien ouvert ${entry.views || 1}×`;
   else if (entry.card_sent_at) step = 'lien pas encore ouvert';
-  main.append(el('strong', 'gift-code', entry.code), el('small', '', [entry.recipient_name, entry.reason, step].filter(Boolean).join(' · ')));
+  const rewardText = entry.reward?.label || (entry.status === 'replaced' ? '' : '⚠ gain à définir');
+  main.append(el('strong', 'gift-code', entry.code), el('small', '', [entry.recipient_name, rewardText, entry.reason, step].filter(Boolean).join(' · ')));
+  if (!entry.reward && entry.status !== 'replaced') row.classList.add('missing-reward');
   const pill = el('span', `pill ${GIFT_TONE[entry.status] || ''}`, giftLabel(entry));
   if (entry.status === 'scratched') pill.dataset.expires = entry.expires_at;
   row.append(main, pill, el('span', 'chevron', '›'));
@@ -325,7 +327,7 @@ function renderGiftList() {
   const needle = giftState.text.toLowerCase();
   const groups = {sent: ['sent', 'dm_failed'], opened: ['opened'], scratched: ['scratched'], used: ['used'], expired: ['expired']};
   const items = giftState.items.filter(entry =>
-    (giftState.filter === 'all' || groups[giftState.filter].includes(entry.status)) &&
+    (giftState.filter === 'all' || (giftState.filter === 'noreward' ? needsReward(entry) : groups[giftState.filter].includes(entry.status))) &&
     (!needle || [entry.code, entry.recipient_name, entry.reason, entry.used_by_roblox_name].some(v => String(v || '').toLowerCase().includes(needle))));
   const host = $('#gift-list');
   host.replaceChildren(...items.map(giftRow));
@@ -391,6 +393,7 @@ function openGiftSheet(entry) {
            () => post(`/api/guild/${state.guild}/gifts/${entry.code}/used`, {used: false}));
   }
   $('#gift-sheet-actions').replaceChildren(...actions);
+  renderRewardEditor(entry);
   $('#gift-sheet').classList.remove('hidden');
 }
 
@@ -415,6 +418,10 @@ async function loadGifts() {
   $('#gift-count').textContent = `· ${fmt(data.total)}`;
   $('#gift-note').textContent = data.public_url ? data.note : 'PUBLIC_URL manquant : René ne peut pas créer les liens des cartes.';
   giftState.items = data.items;
+  const missing = data.missing_reward || 0;
+  $('#gift-missing').classList.toggle('hidden', !missing);
+  $('#gift-missing-title').textContent = `${fmt(missing)} code(s) sans gain`;
+  await mountGiftPicker();
   renderGiftList();
 }
 
@@ -966,6 +973,7 @@ function assistCard(item) {
   const line = (label, value) => { const row = el('div'); row.append(el('small', '', label), el('span', '', value)); details.append(row); };
   line('Code', item.code);
   line('Problème le', when(item.incident_at));
+  line('Gain', item.reward?.label || '—');
   line('Raison', item.reason);
   line('Résultat', ok ? `Activé jusqu’au ${when(item.expires_at)}` : item.detail.replace(/^Impossible : (.)/, (_, first) => first.toUpperCase()));
   if (!ok && item.same_member === false) line('Attention', 'Ce code appartient à un autre membre.');
@@ -1054,4 +1062,91 @@ const previousGuildChangeStats = $('#guild-select').onchange;
 $('#guild-select').onchange = () => {
   broadcastState.rolesFor = '';
   previousGuildChangeStats();
+};
+
+/* ---------- Gains par jeu ---------- */
+
+let rewardCatalog = null;
+let giftPicker = null;
+let sheetPicker = null;
+let sheetEntry = null;
+
+async function ensureCatalog() {
+  if (!rewardCatalog) rewardCatalog = (await api('/api/rewards')).games;
+  return rewardCatalog;
+}
+
+async function mountGiftPicker() {
+  if (giftPicker) return;
+  giftPicker = window.ReneRewards.mount($('#gift-reward'), await ensureCatalog());
+}
+
+function needsReward(entry) {
+  return !entry.reward && entry.status !== 'replaced';
+}
+
+function renderRewardEditor(entry) {
+  sheetEntry = entry;
+  const box = $('#gift-reward-box');
+  box.classList.toggle('hidden', entry.status === 'replaced' || !rewardCatalog);
+  if (entry.status === 'replaced' || !rewardCatalog) return;
+  $('#gift-reward-current').textContent = entry.reward?.label || 'Pas encore défini';
+  $('#gift-reward-current').classList.toggle('warn-text', !entry.reward);
+  sheetPicker = window.ReneRewards.mount($('#gift-reward-editor'), rewardCatalog);
+  if (entry.reward) sheetPicker.set(entry.reward);
+  $('#gift-reward-save').textContent = entry.reward ? 'Modifier le gain' : 'Enregistrer le gain';
+}
+
+$('#gift-reward-save').onclick = async () => {
+  if (!sheetEntry || !sheetPicker) return;
+  const problem = sheetPicker.error();
+  if (problem) { notice(problem, true); return; }
+  const code = sheetEntry.code;
+  const result = await withButton($('#gift-reward-save'), () => post(`/api/guild/${state.guild}/gifts/${code}/reward`, {reward: sheetPicker.value()}));
+  if (!result) return;
+  await loadGifts();
+  // En mode « Sans gain », on enchaîne directement sur le code suivant à compléter.
+  const next = giftState.filter === 'noreward' ? giftState.items.find(needsReward) : null;
+  if (next) openGiftSheet(next);
+  else {
+    const updated = giftState.items.find(item => item.code === code);
+    if (updated) openGiftSheet(updated); else closeGiftSheet();
+  }
+};
+
+$('#gift-missing-run').onclick = () => {
+  giftState.filter = 'noreward';
+  for (const button of document.querySelectorAll('#gift-filter button')) button.classList.toggle('active', button.dataset.filter === 'noreward');
+  renderGiftList();
+  const first = giftState.items.find(needsReward);
+  if (first) openGiftSheet(first);
+};
+
+// Envoi d'une carte : le gain est obligatoire et vérifié avant le QR.
+$('#gift-form').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.target;
+  const memberId = form.elements.namedItem('user_id').value;
+  if (!memberId) { notice('Choisis un membre dans les résultats de recherche.', true); return; }
+  const problem = giftPicker ? giftPicker.error() : 'Le choix du gain n’a pas chargé. Recharge la page.';
+  if (problem) { notice(problem, true); haptic([35, 35, 35]); return; }
+  const button = form.querySelector('button[type=submit]');
+  button.disabled = true;
+  try {
+    const result = await api(`/api/guild/${state.guild}/gift/challenge`, {method: 'POST', body: JSON.stringify({
+      user_id: memberId, reason: form.elements.namedItem('reason').value, reward: giftPicker.value(),
+    })});
+    qrChallenge = result.challenge_id;
+    $('#qr-dialog').classList.remove('hidden');
+    $('#qr-feedback').textContent = 'Ouverture de la caméra…';
+    haptic([20, 40, 20]);
+    startQrCamera();
+  } catch (error) { notice(error.message, true); haptic([35, 35, 35]); }
+  finally { button.disabled = false; }
+};
+
+const confirmQrBase = confirmQr;
+confirmQr = async text => {
+  await confirmQrBase(text);
+  if (!qrChallenge) giftPicker?.reset();
 };

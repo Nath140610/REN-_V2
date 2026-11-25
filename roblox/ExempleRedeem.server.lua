@@ -15,14 +15,34 @@ local MESSAGES = {
 	expired = "Ce code a expiré.",
 	replaced = "Ce code a été remplacé : utilise ta nouvelle carte.",
 	unknown = "Code inconnu.",
+	no_reward = "Ce code n'est pas encore prêt. Réessaie plus tard.",
+	wrong_game = "Ce code est prévu pour un autre jeu.",
 	error = "René ne répond pas. Réessaie dans un instant.",
 }
 
 local cooldown: { [number]: number } = {}
 
-local function giveReward(player: Player)
-	-- Mets ici ta récompense (monnaie, objet, badge…).
-	print(player.Name .. " reçoit sa récompense.")
+-- Remplace chaque print par le vrai code de ton jeu.
+local function giveReward(player: Player, reward: Codes.Reward)
+	if reward.game == "christmasrun" then
+		if reward.type == "glings" or reward.type == "glings_gifts" then
+			print(player.Name .. " reçoit " .. reward.glings .. " glings")
+		end
+		if reward.type == "gifts" or reward.type == "glings_gifts" then
+			print(player.Name .. " reçoit " .. reward.gifts .. " cadeaux")
+		end
+		if reward.type == "gamepass_random" then
+			print(player.Name .. " reçoit un gamepass au hasard")
+		end
+	elseif reward.game == "pointnemo" then
+		if reward.type == "gamepass_random" then
+			print(player.Name .. " reçoit un gamepass au hasard")
+		elseif reward.type == "raft_extension" then
+			print(player.Name .. " reçoit une extension de radeau")
+		elseif reward.type == "server_slot" then
+			print(player.Name .. " reçoit un emplacement de serveur en plus")
+		end
+	end
 end
 
 remote.OnServerInvoke = function(player: Player, code: any)
@@ -35,9 +55,9 @@ remote.OnServerInvoke = function(player: Player, code: any)
 	cooldown[player.UserId] = os.clock()
 
 	local ok, info = Codes.redeem(code, player)
-	if ok then
-		giveReward(player)
-		return true, "Code validé !"
+	if ok and info.reward then
+		giveReward(player, info.reward)
+		return true, "Code validé : " .. info.reward.label
 	end
 	return false, MESSAGES[info.status] or MESSAGES.error
 end

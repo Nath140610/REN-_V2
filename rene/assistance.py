@@ -13,7 +13,7 @@ import discord
 from flask import abort, jsonify, make_response, render_template, request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from rene import analytics, core, robloxapi
+from rene import analytics, core, rewards, robloxapi
 from rene.commands import sendgiftcode as gifts
 
 PASSWORD_KEY = '_assistance_password'
@@ -127,7 +127,8 @@ def clean_fields(data: dict) -> dict:
     user_id = str(data.get('user_id', ''))
     if not user_id.isdigit():
         raise ValueError('Choisis la personne dans la liste des membres.')
-    return {'code': code, 'reason': reason, 'signature': signature,
+    reward = rewards.clean(data.get('reward'), allow_gamepass=False)
+    return {'code': code, 'reason': reason, 'signature': signature, 'reward': reward,
             'incident_at': incident.astimezone(timezone.utc).isoformat(), 'user_id': int(user_id)}
 
 
@@ -144,7 +145,7 @@ async def submit(guild_id, fields: dict, session_id: str) -> dict:
         'id': uuid.uuid4().hex[:10].upper(), 'guild_id': str(guild.id), 'created_at': now.isoformat(),
         'member_id': str(member.id), 'member_name': member.display_name, 'member_username': member.name,
         'code': code, 'reason': fields['reason'], 'incident_at': fields['incident_at'],
-        'signature': fields['signature'], 'session': session_id[:8],
+        'signature': fields['signature'], 'session': session_id[:8], 'reward': fields['reward'],
     }
     if existing is not None:
         status = robloxapi.roblox_status(existing, now)
@@ -160,11 +161,12 @@ async def submit(guild_id, fields: dict, session_id: str) -> dict:
             'distributed_by_name': f'Assistance — {fields["signature"]}', 'created_at': now.isoformat(),
             'delivery_status': 'assistance', 'source': 'assistance', 'assistance_request': record['id'],
             'scratched_at': now.isoformat(), 'expires_at': expires.isoformat(),
+            'reward': fields['reward'],
         }
         record.update(outcome='accepted', code_status='available', expires_at=expires.isoformat(),
                       detail=f'Code ajouté et activé jusqu’au {expires.isoformat()}.')
         result = {'ok': True, 'outcome': 'accepted', 'expires_at': expires.isoformat(),
-                  'message': f'Code activé pour {member.display_name} pendant 24 h.'}
+                  'message': f'Code activé pour {member.display_name} pendant 24 h : {fields["reward"]["label"]}.'}
     data = requests_store()
     data.append(record)
     core.bot.config_data[REQUESTS_KEY] = data[-1000:]
@@ -242,6 +244,11 @@ def install_assistance(app, run) -> None:
         async def get():
             return [{'id': str(g.id), 'name': g.name} for g in allowed_guilds()]
         return jsonify(run(get()))
+
+    @app.get('/api/assist/rewards')
+    def assist_rewards():
+        session_or_abort()
+        return jsonify({'games': rewards.catalog(allow_gamepass=False)})
 
     @app.get('/api/assist/members')
     def assist_members():

@@ -20,6 +20,7 @@
       <div id="assist-selected" class="picker-selected"></div>
     </div>
     <div class="field"><label for="assist-code">Code cadeau</label><input id="assist-code" class="code-input" maxlength="24" placeholder="VOID-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" required></div>
+    <div class="field"><span class="field-title">Gain</span><div id="assist-reward"></div><p class="footnote">L’assistance ne peut pas donner de gamepass.</p></div>
     <div class="field"><label for="assist-reason">Raison</label><textarea id="assist-reason" rows="3" maxlength="500" placeholder="Ce qui ne marche pas, d’après le membre" required></textarea></div>
     <div class="field"><label for="assist-date">Date et heure du problème</label><input id="assist-date" type="datetime-local" required></div>
     <div class="field"><label for="assist-signature">Signature</label><input id="assist-signature" maxlength="60" placeholder="Ton nom" autocomplete="off" required></div>
@@ -33,5 +34,5 @@
   <p class="footnote">Un code absent de la base est ajouté et activé 24 h. Un code déjà présent, utilisé ou non, est toujours refusé. Chaque demande est enregistrée avec ta signature.</p>
 </div>
 </div>
-<script src="/static/assist.js" defer></script>
+<script src="/static/rewards.js" defer></script><script src="/static/assist.js" defer></script>
 </body></html>

@@ -459,7 +459,7 @@
 
   function apply(data) {
     $('#name').textContent = data.recipient || 'toi';
-    $('#guild').textContent = data.guild || '';
+    $('#guild').textContent = data.reward_label || data.guild || '';
     $('#reason').textContent = data.reason ? `« ${data.reason} »` : '';
     if (data.status === 'used') {
       showExpired();

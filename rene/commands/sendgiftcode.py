@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from rene import rewards
 from rene.core import (
     COLOR_DANGER,
     COLOR_SUCCESS,
@@ -176,7 +177,8 @@ async def send_gift_dm(
         (
             f"René a déposé une carte cadeau à ton nom sur **{guild_name}**.\n\n"
             f"🎀 **Raison**\n{reason}\n\n"
-            "Ouvre-la, retourne-la et gratte la zone argentée pour découvrir ton code.\n"
+            + (f"🎮 **Gain**\n{entry['reward']['label']}\n\n" if isinstance(entry.get("reward"), dict) else "")
+            + "Ouvre-la, retourne-la et gratte la zone argentée pour découvrir ton code.\n"
             "⏳ Une fois gratté, le code est valable **24 heures**.\n\n"
             "🔐 Ce lien est personnel : ne le partage pas."
         ),
@@ -226,6 +228,7 @@ async def replace_legacy_codes(guild: discord.Guild) -> dict[str, int]:
             "distributed_by_id": old.get("distributed_by_id", 0),
             "distributed_by_name": old.get("distributed_by_name", "René"),
             "created_at": now, "delivery_status": "pending", "replaces": old_code,
+            "reward": old.get("reward"),
         }
         store[new_code] = entry
         await save_state_immediately()
@@ -255,12 +258,23 @@ async def replace_legacy_codes(guild: discord.Guild) -> dict[str, int]:
 @app_commands.describe(
     membre="Personne qui recevra le code cadeau",
     raison="Raison du don",
+    gain="Jeu et gain du code",
+    glings="Nombre de glings (ChristmasRun)",
+    cadeaux="Nombre de cadeaux (ChristmasRun)",
 )
+@app_commands.choices(gain=[
+    app_commands.Choice(name=f"{game['name']} · {reward['label']}", value=f"{game_id}:{reward_id}")
+    for game_id, game in rewards.GAMES.items()
+    for reward_id, reward in game["rewards"].items()
+])
 @app_commands.guild_only()
 async def sendgiftcode_command(
     interaction: discord.Interaction,
     membre: discord.Member,
     raison: str,
+    gain: app_commands.Choice[str],
+    glings: app_commands.Range[int, 1, rewards.MAX_AMOUNT] | None = None,
+    cadeaux: app_commands.Range[int, 1, rewards.MAX_AMOUNT] | None = None,
 ) -> None:
     assert interaction.guild is not None
 
@@ -269,6 +283,13 @@ async def sendgiftcode_command(
             "❌ Cette commande est réservée au staff.",
             ephemeral=True,
         )
+        return
+
+    game_id, reward_id = gain.value.split(":", 1)
+    try:
+        reward = rewards.clean({"game": game_id, "type": reward_id, "glings": glings, "gifts": cadeaux})
+    except ValueError as error:
+        await interaction.response.send_message(f"❌ {error}", ephemeral=True)
         return
 
     if membre.bot:
@@ -310,6 +331,7 @@ async def sendgiftcode_command(
         "distributed_by_name": str(interaction.user),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "delivery_status": "pending",
+        "reward": reward,
     }
 
     gift_store()[code] = entry
@@ -359,7 +381,8 @@ async def sendgiftcode_command(
         (
             f"René a livré un code cadeau à {membre.mention}.\n\n"
             f"🎟️ **Code :** `{code}`\n"
-            f"🎀 **Raison :** {reason_text}\n\n"
+            f"🎀 **Raison :** {reason_text}\n"
+            f"🎮 **Gain :** {reward['label']}\n\n"
             "✅ Le code est maintenant enregistré définitivement dans "
             "`/giftlist`."
         ),

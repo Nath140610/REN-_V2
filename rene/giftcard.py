@@ -40,6 +40,7 @@ def public_state(entry: dict) -> dict:
         'remaining': max(0, int((expires - now).total_seconds())) if expires else None,
         'lifetime': int(gifts.CARD_LIFETIME.total_seconds()),
         'used_at': entry.get('used_at'),
+        'reward_label': entry['reward'].get('label') if isinstance(entry.get('reward'), dict) else None,
     }
     if status == 'scratched':
         state['code'] = entry['code']

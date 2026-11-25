@@ -21,7 +21,10 @@ class RobloxApiTest(unittest.TestCase):
             'VOID-AAAA-AAAA-AAAA': {'code': 'VOID-AAAA-AAAA-AAAA', 'guild_id': 1, 'recipient_id': 2,
                                     'card_token': 't' * 32, 'delivery_status': 'delivered'},
             'VOID-BBBB-BBBB-BBBB': {'code': 'VOID-BBBB-BBBB-BBBB', 'guild_id': 1, 'recipient_id': 2,
-                                    'card_token': 'u' * 32, 'scratched_at': future(-1), 'expires_at': future(23)},
+                                    'card_token': 'u' * 32, 'scratched_at': future(-1), 'expires_at': future(23),
+                                    'reward': {'game': 'christmasrun', 'type': 'glings', 'glings': 500, 'gamepass': False, 'label': 'ChristmasRun · 500 glings'}},
+            'VOID-EEEE-EEEE-EEEE': {'code': 'VOID-EEEE-EEEE-EEEE', 'guild_id': 1, 'recipient_id': 2,
+                                    'card_token': 'w' * 32, 'scratched_at': future(-1), 'expires_at': future(23)},
             'VOID-CCCC-CCCC-CCCC': {'code': 'VOID-CCCC-CCCC-CCCC', 'guild_id': 1, 'recipient_id': 2,
                                     'card_token': 'v' * 32, 'scratched_at': future(-30), 'expires_at': future(-6)},
             'VOID-DDDD-DDDD-DDDD': {'code': 'VOID-DDDD-DDDD-DDDD', 'guild_id': 1, 'recipient_id': 2,
@@ -59,12 +62,25 @@ class RobloxApiTest(unittest.TestCase):
         self.assertEqual(available['status'], 'available')
         self.assertTrue(available['activated'])
         self.assertEqual(available['recipient_roblox_name'], 'LeaRoblox')
+        self.assertEqual(available['reward']['glings'], 500)
+        self.assertEqual(available['game'], 'christmasrun')
+        self.assertEqual(self.check('VOID-EEEE-EEEE-EEEE').json['status'], 'no_reward')
+        self.assertFalse(self.check('VOID-EEEE-EEEE-EEEE').json['available'])
+        wrong = self.client.get('/api/roblox/code/VOID-BBBB-BBBB-BBBB?game=PointNemo', headers={'X-Rene-Key': KEY})
+        self.assertEqual(wrong.json['status'], 'wrong_game')
+        right = self.client.get('/api/roblox/code/VOID-BBBB-BBBB-BBBB?game=christmasrun', headers={'X-Rene-Key': KEY})
+        self.assertEqual(right.json['status'], 'available')
         self.assertEqual(self.check('VOID-CCCC-CCCC-CCCC').json['status'], 'expired')
         self.assertEqual(self.check('VOID-DDDD-DDDD-DDDD').json['status'], 'replaced')
         self.assertEqual(self.check('VOID-ZZZZ-ZZZZ-ZZZZ').json['status'], 'unknown')
 
     def test_code_can_only_be_redeemed_once(self):
-        body = {'code': 'VOID-BBBB-BBBB-BBBB', 'roblox_user_id': '123', 'roblox_username': 'Lea', 'place_id': '99'}
+        other_game = {'code': 'VOID-BBBB-BBBB-BBBB', 'roblox_user_id': '123', 'game': 'pointnemo'}
+        self.assertEqual(self.client.post('/api/roblox/redeem', json=other_game, headers={'X-Rene-Key': KEY}).status_code, 409)
+        no_reward = {'code': 'VOID-EEEE-EEEE-EEEE', 'roblox_user_id': '123', 'game': 'christmasrun'}
+        self.assertEqual(self.client.post('/api/roblox/redeem', json=no_reward, headers={'X-Rene-Key': KEY}).status_code, 409)
+        body = {'code': 'VOID-BBBB-BBBB-BBBB', 'roblox_user_id': '123', 'roblox_username': 'Lea', 'place_id': '99',
+                'game': 'christmasrun'}
         first = self.client.post('/api/roblox/redeem', json=body, headers={'X-Rene-Key': KEY})
         self.assertEqual(first.status_code, 200)
         self.assertTrue(first.json['redeemed'])

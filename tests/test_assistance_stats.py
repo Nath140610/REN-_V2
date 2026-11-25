@@ -41,7 +41,8 @@ class AssistanceTest(unittest.IsolatedAsyncioTestCase):
 
     def fields(self, **changes):
         data = {'code': 'void-new1-new1-new1', 'reason': 'Le code ne passe pas en jeu', 'signature': 'Sam',
-                'incident_at': (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(), 'user_id': '2'}
+                'incident_at': (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(), 'user_id': '2',
+                'reward': {'game': 'pointnemo', 'type': 'raft_extension'}}
         data.update(changes)
         return data
 
@@ -52,6 +53,8 @@ class AssistanceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robloxapi.roblox_status(entry), 'available')
         self.assertEqual(gifts.card_status(entry), 'scratched')
         self.assertEqual(entry['recipient_id'], 2)
+        self.assertEqual(entry['reward']['type'], 'raft_extension')
+        self.assertEqual(robloxapi.game_status(entry, 'pointnemo'), 'available')
         record = self.config['_assistance_requests'][0]
         self.assertEqual((record['outcome'], record['signature']), ('accepted', 'Sam'))
 
@@ -68,7 +71,10 @@ class AssistanceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((listing['accepted'], listing['refused']), (1, 2))
 
     async def test_every_field_is_required(self):
-        for change in ({'signature': ''}, {'reason': 'x'}, {'incident_at': ''}, {'user_id': ''}, {'code': 'ABC'},
+        for change in ({'reward': {'game': 'pointnemo', 'type': 'gamepass_random'}},
+                       {'reward': {'game': 'christmasrun', 'type': 'gamepass_random'}},
+                       {'reward': {'game': 'christmasrun', 'type': 'glings'}},
+                       {'reward': None}, {'signature': ''}, {'reason': 'x'}, {'incident_at': ''}, {'user_id': ''}, {'code': 'ABC'},
                        {'incident_at': (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()}):
             with self.assertRaises(ValueError, msg=change):
                 assistance.clean_fields(self.fields(**change))

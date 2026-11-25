@@ -189,3 +189,32 @@ input[type=datetime-local]{color-scheme:dark}
 .assist-details small{color:var(--text-2);font-size:13px;padding-top:2px}
 .assist-details span{overflow-wrap:anywhere}
 @media(max-width:600px){.assist-details div{grid-template-columns:1fr;gap:2px}}
+
+/* Choix du gain */
+.field-title{display:block;font-size:13px;font-weight:600;color:var(--text-2);margin:0 4px 7px}
+.reward-picker{display:grid;gap:10px}
+.reward-step{display:none}
+.reward-games{margin:0;justify-self:start}
+.reward-options{margin-top:0}
+.reward-option{cursor:pointer}
+.reward-option .reward-label{flex:1}
+.reward-option .reward-check{margin-left:auto;color:var(--blue);font-style:normal;font-weight:700;opacity:0;transition:opacity .2s var(--ease)}
+.reward-option.active{background:rgba(10,132,255,.12)}
+.reward-option.active .reward-check{opacity:1}
+.reward-amounts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.reward-amount{display:grid;gap:6px;font-size:13px;font-weight:600;color:var(--text-2)}
+.reward-amount input{width:100%;background:var(--bg-2);border:1px solid transparent;border-radius:12px;padding:12px 14px;font-size:16px;color:var(--text);outline:none;font-variant-numeric:tabular-nums}
+.reward-amount input:focus{border-color:var(--blue)}
+.reward-summary{margin:0 4px;min-height:18px;font-size:14px;color:var(--text-2)}
+.reward-summary.ready{color:var(--white)}
+.reward-summary.ready::before{content:"✓ ";color:var(--green)}
+.reward-box{margin:6px 0 10px;padding:14px;border-radius:14px;background:var(--bg-2)}
+.reward-box .card-head{margin-bottom:10px}
+.reward-box h3{font-size:17px}
+.reward-box .group,.reward-box .segmented{background:var(--bg-3)}
+.reward-box .segmented button.active{background:#636366}
+.reward-box .group-row+.group-row::before{border-color:#48484A}
+.reward-box .reward-amount input{background:var(--bg-3)}
+.reward-box .button{margin-top:12px}
+.warn-text{color:#FFA53C!important}
+#gift-list .missing-reward small{color:#FFB463}

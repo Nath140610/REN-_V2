@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
-  const s = {csrf: '', guild: '', history: []};
+  const s = {csrf: '', guild: '', history: [], reward: null};
   const el = (tag, className = '', text = '') => { const n = document.createElement(tag); n.className = className; n.textContent = text; return n; };
 
   async function api(path, options = {}) {
@@ -63,6 +63,10 @@
       select.classList.toggle('hidden', guilds.length < 2);
       s.guild = guilds[0]?.id || '';
       if (!s.guild) notice('René ne voit aucun serveur pour le moment.', true);
+    } catch (error) { notice(error.message, true); }
+    try {
+      const catalog = await api('/api/assist/rewards');
+      s.reward = window.ReneRewards.mount($('#assist-reward'), catalog.games);
     } catch (error) { notice(error.message, true); }
     resetForm();
   }
@@ -137,6 +141,7 @@
   function resetForm() {
     $('#assist-form').reset();
     clearMember();
+    s.reward?.reset();
     $('#assist-date').value = '';
     $('#assist-date').max = localNow();
     $('#assist-form').classList.remove('hidden');
@@ -159,7 +164,7 @@
       const row = el('div', 'list-row');
       row.append(el('span', 'audit-icon', item.ok ? '✓' : '✕'));
       const main = el('div', 'row-main');
-      main.append(el('strong', 'gift-code', item.code), el('small', '', `${item.member} · ${item.time}`));
+      main.append(el('strong', 'gift-code', item.code), el('small', '', `${item.member} · ${item.reward} · ${item.time}`));
       row.append(main, el('span', `pill ${item.ok ? '' : 'fail'}`, item.ok ? 'Activé 24 h' : 'Refusé'));
       return row;
     }));
@@ -175,16 +180,20 @@
     const signature = $('#assist-signature').value.trim();
     if (!memberId) { notice('Choisis la personne dans la liste des membres.', true); $('#assist-member').focus(); return; }
     if (!/^VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) { notice('Le code doit ressembler à VOID-XXXX-XXXX-XXXX.', true); $('#assist-code').focus(); return; }
+    const rewardError = s.reward ? s.reward.error() : 'Le choix du gain n’a pas chargé. Recharge la page.';
+    if (rewardError) { notice(rewardError, true); return; }
+    const reward = s.reward.value();
     if (reason.length < 5) { notice('Explique le problème.', true); $('#assist-reason').focus(); return; }
     if (!date) { notice('Indique la date et l’heure du problème.', true); $('#assist-date').focus(); return; }
     if (signature.length < 2) { notice('Signe la demande avec ton nom.', true); $('#assist-signature').focus(); return; }
     const member = $('#assist-member').value;
-    if (!window.confirm(`Vérifier ${code} pour ${member} ?\nS’il n’existe pas, il sera activé pendant 24 h.`)) return;
+    const rewardText = $('#assist-reward .reward-summary').textContent;
+    if (!window.confirm(`Vérifier ${code} pour ${member} ?\nGain : ${rewardText}\nS’il n’existe pas, il sera activé pendant 24 h.`)) return;
     const button = $('#assist-submit');
     button.disabled = true;
     try {
       const result = await api('/api/assist/requests', {method: 'POST', body: JSON.stringify({
-        guild_id: s.guild, user_id: memberId, code, reason, signature,
+        guild_id: s.guild, user_id: memberId, code, reason, signature, reward,
         incident_at: new Date(date).toISOString(),
       })});
       if (result.ok) {
@@ -193,7 +202,7 @@
       } else {
         showResult(false, 'Ce n’est pas possible', result.message);
       }
-      s.history.unshift({ok: !!result.ok, code, member,
+      s.history.unshift({ok: !!result.ok, code, member, reward: rewardText,
                          time: new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})});
       renderHistory();
     } catch (error) {

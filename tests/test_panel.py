@@ -112,7 +112,7 @@ class PanelActionsTest(unittest.IsolatedAsyncioTestCase):
              patch.object(panel.core.bot, 'get_user', return_value=owner) as get_user, \
              patch.object(panel, 'send_gift', new_callable=AsyncMock,
                           return_value={'ok': True}) as send_gift:
-            result = await panel.start_gift_challenge('123', '456', 'Merci', 'session-a')
+            result = await panel.start_gift_challenge('123', '456', 'Merci', 'session-a', {'game': 'christmasrun', 'type': 'glings', 'glings': 500, 'gamepass': False, 'label': 'ChristmasRun · 500 glings'})
             get_user.assert_called_once_with(panel.OWNER_DISCORD_ID)
             owner.send.assert_awaited_once()
             challenge = panel.gift_challenges[result['challenge_id']]
@@ -130,7 +130,7 @@ class PanelActionsTest(unittest.IsolatedAsyncioTestCase):
                                                     token, 'session-b')
             self.assertEqual((await panel.confirm_gift_challenge(
                 '123', result['challenge_id'], token, 'session-a'))['ok'], True)
-            send_gift.assert_awaited_once_with('123', '456', 'Merci')
+            send_gift.assert_awaited_once_with('123', '456', 'Merci', {'game': 'christmasrun', 'type': 'glings', 'glings': 500, 'gamepass': False, 'label': 'ChristmasRun · 500 glings'})
             with self.assertRaises(ValueError):
                 await panel.confirm_gift_challenge('123', result['challenge_id'],
                                                     token, 'session-a')
@@ -149,7 +149,9 @@ class PanelActionsTest(unittest.IsolatedAsyncioTestCase):
              patch.object(panel.core, 'save_state_immediately', new_callable=AsyncMock) as save, \
              patch.object(panel, 'send_gift_dm', new_callable=AsyncMock, return_value=True) as dm, \
              patch.object(panel.analytics, 'audit'):
-            result = await panel.send_gift('123', '456', 'Merci pour ton aide')
+            with self.assertRaises(ValueError):
+                await panel.send_gift('123', '456', 'Sans gain')
+            result = await panel.send_gift('123', '456', 'Merci pour ton aide', {'game': 'christmasrun', 'type': 'glings', 'glings': 500, 'gamepass': False, 'label': 'ChristmasRun · 500 glings'})
             self.assertTrue(result['delivered'])
             self.assertEqual(entries[result['code']]['delivery_status'], 'delivered')
             self.assertEqual(save.await_count, 2)
