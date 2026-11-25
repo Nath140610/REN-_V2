@@ -19,7 +19,18 @@
     for (const name of ['assist-boot', 'assist-login', 'assist-app']) $(`#${name}`).classList.toggle('hidden', name !== id);
   }
 
-  const vibrate = pattern => { try { navigator.vibrate?.(pattern); } catch {} };
+  // Android : API Vibration ; iPhone (iOS 18+) : retour haptique du système (voir haptics.js).
+  const vibrate = pattern => window.reneHaptics?.play(pattern);
+
+  // Les choix au toucher vibrent tout de suite, pendant le geste : iOS n'accepte le retour
+  // haptique que dans la foulée d'un toucher.
+  document.addEventListener('click', event => {
+    const target = event.target.closest?.('button, label.switch-row');
+    if (!target || target.matches('.picker-option')) return;
+    if (target.matches('.reward-option, .segmented button')) vibrate('select');
+    else if (target.matches('#assist-submit')) vibrate([30]);
+    else vibrate('tap');
+  }, true);
 
   function notice(text, bad = false) {
     vibrate(bad ? [70, 60, 70, 60, 70] : [40, 70, 60]);
@@ -81,8 +92,12 @@
       const result = await api('/api/assist/login', {method: 'POST', body: JSON.stringify({password: $('#assist-password').value})});
       s.csrf = result.csrf;
       $('#assist-password').value = '';
+      vibrate('success');
       await openApp();
-    } catch (error) { $('#assist-login-error').textContent = error.message; }
+    } catch (error) {
+      $('#assist-login-error').textContent = error.message;
+      vibrate('error');
+    }
   };
 
   $('#assist-logout').onclick = async () => {

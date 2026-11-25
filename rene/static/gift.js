@@ -20,7 +20,7 @@
   const facingOf = angle => { const r = ((angle % 360) + 360) % 360; return r > 90 && r < 270; };
   const facingBack = () => facingOf(s.ry);
   const settled = () => Math.abs(s.ry - s.base) < 1.5 && Math.abs(s.rx) < 1.5 && Math.abs(s.vy) < 0.4;
-  const vibrate = pattern => { try { navigator.vibrate?.(pattern); } catch {} };
+  const vibrate = pattern => window.reneHaptics ? window.reneHaptics.play(pattern) : navigator.vibrate?.(pattern);
 
   /* ---------- Rotation 3D ---------- */
 
