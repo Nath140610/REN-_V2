@@ -11,12 +11,20 @@
 --   local Codes = require(game.ServerScriptService.ReneGiftCodes)
 --   local info = Codes.check("VOID-AB7K-MP4X-9TQH")      -- info.status, info.available, info.used...
 --   local ok, info = Codes.redeem("VOID-AB7K-MP4X-9TQH", player)  -- consomme le code une seule fois
+--
+-- Statistiques : dès que ce module est chargé (require), chaque serveur envoie à René la liste de ses
+-- joueurs toutes les minutes. Le panel affiche alors les serveurs en ligne, les joueurs uniques,
+-- le temps de jeu et les joueurs les plus actifs. Mets SEND_STATS à false pour couper l'envoi.
 
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local BASE_URL = "https://ton-service.onrender.com" -- URL du panel René, sans / final
 local FALLBACK_KEY = "" -- clé affichée dans Réglages > Roblox (laisser vide si tu utilises le secret)
 local GAME = "christmasrun" -- "pointnemo" dans PointNemo, "christmasrun" dans ChristmasRun
+local SEND_STATS = true -- envoie les joueurs connectés au panel (Statistiques > Jeu Roblox)
+local STATS_EVERY = 60 -- secondes entre deux envois
 
 local ReneGiftCodes = {}
 
@@ -103,6 +111,52 @@ function ReneGiftCodes.redeem(code: string, player: Player): (boolean, CodeInfo)
 		game = GAME,
 	})
 	return info.redeemed == true, info
+end
+
+-- Envoie la liste des joueurs de ce serveur. closing = true quand le serveur s'arrête.
+function ReneGiftCodes.sendStats(closing: boolean?)
+	local list = {}
+	for _, player in Players:GetPlayers() do
+		table.insert(list, { id = tostring(player.UserId), name = player.Name })
+	end
+	return request("POST", "/api/roblox/heartbeat", {
+		game = GAME,
+		job_id = if game.JobId ~= "" then game.JobId else "studio",
+		place_id = tostring(game.PlaceId),
+		private = game.PrivateServerId ~= "",
+		max_players = Players.MaxPlayers,
+		players = list,
+		closing = closing == true,
+	})
+end
+
+local function startStats()
+	local pending = false
+	local function soon()
+		-- Un joueur qui arrive est compté tout de suite, sans attendre le prochain envoi.
+		if pending then
+			return
+		end
+		pending = true
+		task.delay(5, function()
+			pending = false
+			ReneGiftCodes.sendStats(false)
+		end)
+	end
+	Players.PlayerAdded:Connect(soon)
+	task.spawn(function()
+		while true do
+			ReneGiftCodes.sendStats(false)
+			task.wait(STATS_EVERY)
+		end
+	end)
+	game:BindToClose(function()
+		ReneGiftCodes.sendStats(true)
+	end)
+end
+
+if SEND_STATS and RunService:IsServer() then
+	startStats()
 end
 
 return ReneGiftCodes

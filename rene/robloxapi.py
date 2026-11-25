@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 from flask import jsonify, request
 
-from rene import analytics, core, rewards
+from rene import analytics, core, rewards, robloxstats
 from rene.commands import sendgiftcode as gifts
 
 KEY_STORE = '_roblox_api_key'
@@ -155,6 +155,8 @@ def install_roblox_api(app, run) -> None:
         if not authorized():
             return jsonify({'error': 'Clé Roblox invalide.'}), 401
         return None
+
+    robloxstats.install_roblox_stats(app, run, guard)
 
     @app.get('/api/roblox/code/<path:raw>')
     def roblox_check(raw):

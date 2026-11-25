@@ -28,6 +28,9 @@ async def on_ready() -> None:
     if not seniority_refresh_loop.is_running():
         seniority_refresh_loop.start()
 
+    from rene import robloxstats
+    robloxstats.start_sampler()
+
     await apply_panel_presence()
 
     if not bot.idle_avatar_applied:

@@ -22,7 +22,7 @@ from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
-from rene import assistance, broadcast, polls, rewards, robloxapi, stats, ticketrooms
+from rene import assistance, broadcast, polls, rewards, robloxapi, robloxstats, stats, ticketrooms
 from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
@@ -753,7 +753,7 @@ def install_panel(app):
         resp.headers['Referrer-Policy'] = 'same-origin'
         resp.headers['X-Frame-Options'] = 'DENY'
         resp.headers['Content-Security-Policy'] = ("default-src 'self'; img-src 'self' https://cdn.discordapp.com "
-            "https://*.discordapp.net data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; "
+            "https://*.discordapp.net https://*.rbxcdn.com data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; "
             "font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         return resp
 
@@ -913,6 +913,27 @@ def install_panel(app):
             days = 30
         days = days if days in (7, 30, 90) else 30
         return response(lambda: run(stats.build(guild_for(positive_id(guild_id)), days), 30))
+
+    @app.get('/api/roblox-stats')
+    def roblox_game_stats():
+        protected()
+        try:
+            days = int(request.args.get('days', '30'))
+        except ValueError:
+            days = 30
+        days = days if days in (7, 30, 90) else 30
+        game = request.args.get('game') or None
+        return response(lambda: run(robloxstats.build(days, game), 40))
+
+    @app.get('/api/system/roblox/games')
+    def roblox_games():
+        protected()
+        return jsonify(robloxstats.settings())
+
+    @app.post('/api/system/roblox/games')
+    def roblox_games_save():
+        protected()
+        return response(lambda: run(robloxstats.save_settings(payload()), 30))
 
     @app.get('/api/guild/<guild_id>/broadcast')
     def broadcast_status(guild_id):
