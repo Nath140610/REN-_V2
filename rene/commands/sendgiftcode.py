@@ -107,10 +107,12 @@ def parse_utc(raw: str | None) -> datetime | None:
 
 
 def card_status(entry: dict, now: datetime | None = None) -> str:
-    """legacy, replaced, dm_failed, sent, opened, scratched, expired."""
+    """legacy, replaced, used, dm_failed, sent, opened, scratched, expired."""
     now = now or datetime.now(timezone.utc)
     if entry.get("replaced_by"):
         return "replaced"
+    if entry.get("used_at"):
+        return "used"
     if not entry.get("card_token"):
         return "legacy"
     if entry.get("delivery_status") == "dm_failed":

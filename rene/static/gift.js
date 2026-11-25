@@ -461,7 +461,14 @@
     $('#name').textContent = data.recipient || 'toi';
     $('#guild').textContent = data.guild || '';
     $('#reason').textContent = data.reason ? `« ${data.reason} »` : '';
-    if (data.status === 'expired') {
+    if (data.status === 'used') {
+      showExpired();
+      codeEl.textContent = 'Code utilisé';
+      timerLabel.textContent = 'Utilisé dans Roblox';
+      timerValue.textContent = data.used_at ? new Date(data.used_at).toLocaleDateString('fr-FR') : '';
+      hint.textContent = 'Ce code a bien été utilisé. Merci !';
+      intro(true);
+    } else if (data.status === 'expired') {
       showExpired();
       intro(true);
     } else if (data.code) {

@@ -22,6 +22,7 @@ from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
 from rene.commands.sendgiftcode import generate_unique_code, gift_store, send_gift_dm
+from rene import robloxapi
 from rene.giftcard import install_giftcard
 
 SESSION_AGE = 8 * 3600
@@ -143,7 +144,8 @@ async def search_members(guild_id, query):
 
 GIFT_FIELDS = ('code', 'recipient_id', 'recipient_name', 'reason', 'created_at', 'delivery_status',
                'card_sent_at', 'opened_at', 'last_seen_at', 'views', 'scratched_at', 'expires_at',
-               'replaced_by', 'replaces')
+               'replaced_by', 'replaces', 'used_at', 'used_by_roblox_id', 'used_by_roblox_name',
+               'used_place_id', 'used_manually')
 
 
 async def gifts(guild_id):
@@ -178,6 +180,26 @@ async def replace_legacy_gifts(guild_id):
     if result['absent']:
         message += f' {result["absent"]} membre(s) parti(s).'
     return dict(result, ok=True, message=message)
+
+
+async def set_gift_used(guild_id, code, used):
+    guild = guild_for(guild_id)
+    entry = gift_store().get(code)
+    if not isinstance(entry, dict) or str(entry.get('guild_id')) != str(guild.id):
+        raise ValueError('Code introuvable.')
+    if used:
+        if robloxapi.roblox_status(entry) != 'available':
+            raise ValueError('Ce code n’est pas disponible.')
+        entry.update({'used_at': datetime.now(timezone.utc).isoformat(), 'used_manually': True,
+                      'used_by_roblox_name': 'Panel', 'used_by_roblox_id': None})
+        detail = f'Code {code} marqué utilisé depuis le panel'
+    else:
+        for key in ('used_at', 'used_by_roblox_id', 'used_by_roblox_name', 'used_place_id', 'used_manually'):
+            entry.pop(key, None)
+        detail = f'Utilisation du code {code} annulée'
+    analytics.audit(guild.id, 'gift', detail)
+    await core.save_state_immediately()
+    return {'ok': True, 'message': 'Code marqué utilisé.' if used else 'Code de nouveau disponible.'}
 
 
 async def resend_gift(guild_id, code):
@@ -648,6 +670,7 @@ def install_panel(app):
         return
     app._rene_panel_installed = True
     install_giftcard(app, lambda coro, timeout=20: run(coro, timeout))
+    robloxapi.install_roblox_api(app, lambda coro, timeout=20: run(coro, timeout))
 
     @app.after_request
     def security_headers(resp):
@@ -775,6 +798,39 @@ def install_panel(app):
         if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
             abort(404)
         return response(lambda: run(resend_gift(positive_id(guild_id), code), 40))
+
+    @app.post('/api/guild/<guild_id>/gifts/<code>/used')
+    def gift_used(guild_id, code):
+        protected()
+        if not re.fullmatch(r'VOID-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}', code):
+            abort(404)
+        return response(lambda: run(set_gift_used(positive_id(guild_id), code, bool(payload().get('used'))), 30))
+
+    @app.get('/api/system/roblox')
+    def roblox_settings():
+        protected()
+        key = robloxapi.api_key()
+        return jsonify({'configured': bool(key), 'from_env': robloxapi.key_from_env(), 'key': key,
+                        'base_url': giftcodes.public_base_url() or request.host_url.rstrip('/')})
+
+    @app.get('/api/system/roblox/script')
+    def roblox_script():
+        protected()
+        text = (core.BASE_DIR / 'roblox' / 'ReneGiftCodes.lua').read_text(encoding='utf-8')
+        base = giftcodes.public_base_url() or request.host_url.rstrip('/')
+        return jsonify({'script': text.replace('https://ton-service.onrender.com', base)})
+
+    @app.post('/api/system/roblox')
+    def roblox_regenerate():
+        protected()
+        if robloxapi.key_from_env():
+            return jsonify({'error': 'La clé vient de ROBLOX_API_KEY sur Render : change-la là-bas.'}), 400
+        key = robloxapi.regenerate_key()
+        if core.bot.is_ready() and not core.bot.is_closed():
+            run(core.save_state_immediately(), 30)
+        else:
+            core.save_runtime_json(core.CONFIG_FILE, core.bot.config_data)
+        return jsonify({'ok': True, 'key': key, 'message': 'Nouvelle clé créée. Mets-la à jour dans Roblox.'})
 
     @app.get('/api/guild/<guild_id>/appointments')
     def list_appointments(guild_id):

@@ -284,9 +284,11 @@ setTimeout(refreshTicketBadge, 4000);
 
 /* ---------- Cartes cadeau à gratter ---------- */
 
-const GIFT_LABELS = {sent:'Pas ouverte', opened:'Ouverte', scratched:'Grattée', expired:'Expirée',
+const GIFT_LABELS = {sent:'Pas ouverte', opened:'Ouverte', scratched:'Grattée', expired:'Expirée', used:'Utilisé',
                      replaced:'Remplacé', legacy:'Ancien code', dm_failed:'MP fermé'};
-const GIFT_TONE = {sent:'idle', opened:'blue', scratched:'', expired:'fail', replaced:'idle', legacy:'warn', dm_failed:'fail'};
+const GIFT_TONE = {sent:'idle', opened:'blue', scratched:'', expired:'fail', used:'violet', replaced:'idle', legacy:'warn', dm_failed:'fail'};
+const giftState = {items: [], filter: 'all', text: ''};
+const when = value => value ? new Date(value).toLocaleString('fr-FR', {dateStyle:'medium', timeStyle:'short'}) : '';
 
 function remainingText(expiresAt) {
   const left = Math.max(0, new Date(expiresAt).getTime() - Date.now());
@@ -294,49 +296,139 @@ function remainingText(expiresAt) {
   return hours ? `${hours} h ${String(minutes).padStart(2, '0')}` : `${minutes} min`;
 }
 
+function giftLabel(entry) {
+  if (entry.status === 'scratched') return `Grattée · ${remainingText(entry.expires_at)}`;
+  if (entry.status === 'used') return entry.used_by_roblox_name ? `Utilisé · ${entry.used_by_roblox_name}` : 'Utilisé';
+  return GIFT_LABELS[entry.status] || entry.status;
+}
+
 function giftRow(entry) {
   const row = el('div', 'list-row');
-  row.append(el('span', 'audit-icon', entry.status === 'scratched' ? '✦' : '◇'));
+  row.tabIndex = 0;
+  row.append(el('span', 'audit-icon', entry.status === 'used' ? '✓' : entry.status === 'scratched' ? '✦' : '◇'));
   const main = el('div', 'row-main');
-  const detail = [entry.recipient_name, entry.reason];
-  if (entry.scratched_at) detail.push(`grattée le ${new Date(entry.scratched_at).toLocaleString('fr-FR', {dateStyle:'short', timeStyle:'short'})}`);
-  else if (entry.opened_at) detail.push(`ouverte ${entry.views || 1}×`);
-  else detail.push(date(entry.created_at));
-  main.append(el('strong', 'gift-code', entry.code), el('small', '', detail.filter(Boolean).join(' · ')));
-  row.append(main);
-  const label = entry.status === 'scratched' ? `Grattée · ${remainingText(entry.expires_at)}` : GIFT_LABELS[entry.status] || entry.status;
-  const pill = el('span', `pill ${GIFT_TONE[entry.status] || ''}`, label);
+  let step = date(entry.created_at);
+  if (entry.used_at) step = `utilisé le ${when(entry.used_at)}`;
+  else if (entry.scratched_at) step = `grattée le ${when(entry.scratched_at)}`;
+  else if (entry.opened_at) step = `lien ouvert ${entry.views || 1}×`;
+  else if (entry.card_sent_at) step = 'lien pas encore ouvert';
+  main.append(el('strong', 'gift-code', entry.code), el('small', '', [entry.recipient_name, entry.reason, step].filter(Boolean).join(' · ')));
+  const pill = el('span', `pill ${GIFT_TONE[entry.status] || ''}`, giftLabel(entry));
   if (entry.status === 'scratched') pill.dataset.expires = entry.expires_at;
-  row.append(pill);
-  if (['sent', 'opened', 'dm_failed'].includes(entry.status)) {
-    const resend = Object.assign(el('button', 'mini', 'Renvoyer'), {type: 'button'});
-    resend.onclick = async () => {
-      if (!window.confirm(`Renvoyer la carte à ${entry.recipient_name} ? L’ancien MP sera supprimé.`)) return;
-      if (await withButton(resend, () => post(`/api/guild/${state.guild}/gifts/${entry.code}/resend`))) await loadGifts();
-    };
-    row.append(resend);
-  }
+  row.append(main, pill, el('span', 'chevron', '›'));
+  row.onclick = () => openGiftSheet(entry);
+  row.onkeydown = event => { if (event.key === 'Enter') openGiftSheet(entry); };
   return row;
 }
+
+function renderGiftList() {
+  const needle = giftState.text.toLowerCase();
+  const groups = {sent: ['sent', 'dm_failed'], opened: ['opened'], scratched: ['scratched'], used: ['used'], expired: ['expired']};
+  const items = giftState.items.filter(entry =>
+    (giftState.filter === 'all' || groups[giftState.filter].includes(entry.status)) &&
+    (!needle || [entry.code, entry.recipient_name, entry.reason, entry.used_by_roblox_name].some(v => String(v || '').toLowerCase().includes(needle))));
+  const host = $('#gift-list');
+  host.replaceChildren(...items.map(giftRow));
+  if (!items.length) empty(host, giftState.items.length ? 'Aucun code ne correspond.' : 'Aucune carte envoyée.');
+}
+
+function timelineStep(title, detail, status) {
+  const step = el('div', `step ${status}`);
+  const text = el('div');
+  text.append(el('strong', '', title));
+  if (detail) text.append(el('small', '', detail));
+  step.append(el('i'), text);
+  return step;
+}
+
+function openGiftSheet(entry) {
+  $('#gift-sheet-code').textContent = entry.code;
+  $('#gift-sheet-meta').textContent = [entry.recipient_name, entry.reason].filter(Boolean).join(' · ');
+  const legacy = entry.status === 'legacy' || entry.status === 'replaced';
+  const steps = [];
+  steps.push(timelineStep(legacy ? 'Code envoyé en clair' : 'Lien envoyé en MP',
+                          entry.status === 'dm_failed' ? 'MP fermé' : when(entry.card_sent_at || entry.created_at),
+                          entry.status === 'dm_failed' ? 'bad' : 'done'));
+  if (!legacy) {
+    steps.push(entry.opened_at
+      ? timelineStep('Lien ouvert', `${when(entry.opened_at)} · ${entry.views || 1} visite(s), dernière ${when(entry.last_seen_at)}`, 'done')
+      : timelineStep('Lien pas encore ouvert', '', 'todo'));
+    steps.push(entry.scratched_at
+      ? timelineStep('Code gratté', `${when(entry.scratched_at)} · valable jusqu’au ${when(entry.expires_at)}`, 'done')
+      : timelineStep('Pas encore gratté', 'Le code n’est pas encore activé.', 'todo'));
+  }
+  if (entry.used_at) {
+    const who = entry.used_manually ? 'Marqué depuis le panel'
+      : `${entry.used_by_roblox_name || 'Joueur'} (${entry.used_by_roblox_id || '?'})${entry.used_place_id ? ` · place ${entry.used_place_id}` : ''}`;
+    steps.push(timelineStep('Utilisé dans Roblox', `${when(entry.used_at)} · ${who}`, 'done'));
+  } else if (entry.status === 'expired') {
+    steps.push(timelineStep('Expiré sans être utilisé', when(entry.expires_at), 'bad'));
+  } else if (entry.status === 'replaced') {
+    steps.push(timelineStep('Remplacé par une carte', entry.replaced_by || '', 'bad'));
+  } else {
+    steps.push(timelineStep('Pas encore utilisé', entry.status === 'scratched' ? `Disponible encore ${remainingText(entry.expires_at)}` : '', 'todo'));
+  }
+  $('#gift-timeline').replaceChildren(...steps);
+
+  const actions = [];
+  const action = (label, kind, question, call) => {
+    const button = Object.assign(el('button', `button ${kind}`, label), {type: 'button'});
+    button.onclick = async () => {
+      if (question && !window.confirm(question)) return;
+      if (await withButton(button, call)) { closeGiftSheet(); await loadGifts(); }
+    };
+    actions.push(button);
+  };
+  if (['sent', 'opened', 'dm_failed'].includes(entry.status)) {
+    action('Renvoyer le lien', 'subtle', 'Renvoyer la carte ? L’ancien MP sera supprimé.',
+           () => post(`/api/guild/${state.guild}/gifts/${entry.code}/resend`));
+  }
+  if (entry.status === 'scratched' || entry.status === 'legacy') {
+    action('Marquer utilisé', 'primary', '', () => post(`/api/guild/${state.guild}/gifts/${entry.code}/used`, {used: true}));
+  }
+  if (entry.status === 'used') {
+    action('Annuler l’utilisation', 'danger', 'Rendre ce code de nouveau disponible ?',
+           () => post(`/api/guild/${state.guild}/gifts/${entry.code}/used`, {used: false}));
+  }
+  $('#gift-sheet-actions').replaceChildren(...actions);
+  $('#gift-sheet').classList.remove('hidden');
+}
+
+function closeGiftSheet() { $('#gift-sheet').classList.add('hidden'); }
+$('#gift-sheet-close').onclick = closeGiftSheet;
+$('#gift-sheet').onclick = event => { if (event.target.id === 'gift-sheet') closeGiftSheet(); };
 
 async function loadGifts() {
   const data = await api(`/api/guild/${state.guild}/gifts`);
   const c = data.counts || {};
-  const active = (c.sent || 0) + (c.opened || 0) + (c.scratched || 0) + (c.expired || 0) + (c.dm_failed || 0);
+  const sent = ['sent', 'opened', 'scratched', 'expired', 'used', 'dm_failed'].reduce((n, k) => n + (c[k] || 0), 0);
+  const opened = (c.opened || 0) + (c.scratched || 0) + (c.expired || 0) + (c.used || 0);
   $('#gift-stats').replaceChildren(
-    metric('Cartes envoyées', fmt(active), 'avec un lien unique', '◇'),
-    metric('Ouvertes', fmt((c.opened || 0) + (c.scratched || 0) + (c.expired || 0)), 'au moins une fois', '◎'),
-    metric('Grattées', fmt((c.scratched || 0) + (c.expired || 0)), `${fmt(c.scratched || 0)} encore valables`, '✦'),
-    metric('Expirées', fmt(c.expired || 0), 'après 24 h', '⏳'),
+    metric('Liens envoyés', fmt(sent), `${fmt((c.sent || 0) + (c.dm_failed || 0))} pas encore ouverts`, '◇'),
+    metric('Liens ouverts', fmt(opened), 'au moins une fois', '◎'),
+    metric('Grattés', fmt((c.scratched || 0) + (c.expired || 0) + (c.used || 0)), `${fmt(c.scratched || 0)} disponibles`, '✦'),
+    metric('Utilisés', fmt(c.used || 0), `${fmt(c.expired || 0)} expirés`, '✓'),
   );
   const legacy = c.legacy || 0;
   $('#gift-legacy').classList.toggle('hidden', !legacy);
   $('#gift-legacy-title').textContent = `${fmt(legacy)} ancien(s) code(s) envoyé(s) en clair`;
   $('#gift-count').textContent = `· ${fmt(data.total)}`;
   $('#gift-note').textContent = data.public_url ? data.note : 'PUBLIC_URL manquant : René ne peut pas créer les liens des cartes.';
-  const host = $('#gift-list');
-  host.replaceChildren(...data.items.map(giftRow));
-  if (!data.items.length) empty(host, 'Aucune carte envoyée.');
+  giftState.items = data.items;
+  renderGiftList();
+}
+
+let giftFilterTimer;
+$('#gift-filter-text').oninput = event => {
+  clearTimeout(giftFilterTimer);
+  giftFilterTimer = setTimeout(() => { giftState.text = event.target.value.trim(); renderGiftList(); }, 150);
+};
+for (const button of document.querySelectorAll('#gift-filter button')) {
+  button.onclick = () => {
+    giftState.filter = button.dataset.filter;
+    for (const other of document.querySelectorAll('#gift-filter button')) other.classList.toggle('active', other === button);
+    renderGiftList();
+  };
 }
 
 $('#gift-legacy-run').onclick = async () => {
@@ -355,3 +447,42 @@ setInterval(() => {
     if (left <= 0) { pill.classList.add('fail'); delete pill.dataset.expires; }
   }
 }, 30000);
+
+/* ---------- Roblox ---------- */
+
+const roblox = {key: '', shown: false};
+
+function renderRobloxKey() {
+  $('#roblox-key').textContent = !roblox.key ? 'Aucune clé : crée-en une.'
+    : roblox.shown ? roblox.key : `${roblox.key.slice(0, 9)}••••••••••••`;
+  $('#roblox-show').textContent = roblox.shown ? 'Masquer' : 'Afficher';
+  $('#roblox-regenerate').textContent = roblox.key ? 'Nouvelle clé' : 'Créer une clé';
+}
+
+async function loadRoblox() {
+  const data = await api('/api/system/roblox');
+  roblox.key = data.key || '';
+  $('#roblox-url').textContent = data.base_url;
+  $('#roblox-regenerate').classList.toggle('hidden', data.from_env);
+  renderRobloxKey();
+}
+
+const loadSettingsBase = loadSettings;
+loadSettings = async () => { await Promise.all([loadSettingsBase(), loadRoblox()]); };
+
+async function copyText(text, message) {
+  try { await navigator.clipboard.writeText(text); notice(message); haptic([15, 25, 15]); }
+  catch { notice('Copie impossible sur cet appareil.', true); }
+}
+
+$('#roblox-show').onclick = () => { roblox.shown = !roblox.shown; renderRobloxKey(); };
+$('#roblox-copy-key').onclick = () => roblox.key ? copyText(roblox.key, 'Clé copiée.') : notice('Crée d’abord une clé.', true);
+$('#roblox-copy-script').onclick = async () => {
+  try { await copyText((await api('/api/system/roblox/script')).script, 'Script copié. Colle-le dans un ModuleScript « ReneGiftCodes ».'); }
+  catch (error) { notice(error.message, true); }
+};
+$('#roblox-regenerate').onclick = async () => {
+  if (roblox.key && !window.confirm('Créer une nouvelle clé ? L’ancienne cessera de marcher dans Roblox.')) return;
+  const result = await withButton($('#roblox-regenerate'), () => post('/api/system/roblox'));
+  if (result) { roblox.key = result.key; roblox.shown = true; renderRobloxKey(); }
+};
