@@ -44,6 +44,18 @@ class AiRenderTest(unittest.TestCase):
         self.assertIsNone(embed.title)
         self.assertEqual(airender.render('').description, '…')
 
+    def test_tags_on_a_single_line_or_escaped(self):
+        # ChatGPT transforme les retours à la ligne simples en espaces : tout arrive sur une ligne.
+        one_line = ('[TITRE] Bilan du mois [TEXTE] Tout va bien. [CHIFFRE] Messages : 1 240 '
+                    r'**[ENCART]** Le jeudi : 18 h \[ETAPES\] Sondage | Event [QUESTION] On lance ?')
+        blocks = airender.parse(one_line)
+        self.assertEqual([b['type'] for b in blocks], ['title', 'text', 'stat', 'box', 'steps', 'question'])
+        self.assertEqual(blocks[0]['text'], 'Bilan du mois')
+        self.assertEqual((blocks[3]['label'], blocks[3]['text']), ('Le jeudi', '18 h'))
+        self.assertEqual(blocks[4]['items'], ['Sondage', 'Event'])
+        # Un crochet ordinaire n'est pas une balise.
+        self.assertEqual(airender.parse('Voir [ici] pour plus')[0]['text'], 'Voir [ici] pour plus')
+
     def test_pre_prompt_lists_every_tag(self):
         text = airender.pre_prompt(700)
         for tag in ('[TITRE]', '[TEXTE]', '[ENCART]', '[CHIFFRE]', '[LISTE]', '[ETAPES]', '[QUESTION]'):

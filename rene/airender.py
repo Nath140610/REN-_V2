@@ -45,7 +45,8 @@ FORMAT_RULES = (
     '[QUESTION] une question à poser à la personne\n'
     '[COULEUR] bleu, vert, orange, rouge, violet ou rose (facultatif, selon le ton)\n'
     'Règles : pas de Markdown (#, **, tableaux), pas de phrase hors balise, pas de bloc de plus de deux phrases, '
-    'sépare les éléments de [LISTE] et [ETAPES] par « | ». Utilise seulement les balises utiles. '
+    'sépare les éléments de [LISTE] et [ETAPES] par « | », laisse une ligne vide entre deux balises. '
+    'Utilise seulement les balises utiles. '
     'Exemple :\n[TITRE] Code bientôt actif\n[TEXTE] Ta carte doit d’abord être grattée.\n'
     '[ENCART] Validité : 24 h après le grattage\n[ETAPES] Ouvre le lien reçu en MP | Gratte la carte | '
     'Entre le code dans le jeu\n[QUESTION] Tu as bien reçu le MP de René ?\n'
@@ -64,7 +65,7 @@ def tag_name(raw: str) -> str:
 def strip_markdown(text: str) -> str:
     text = re.sub(r'^\s*#{1,6}\s*', '', text)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    return text.strip()
+    return text.strip().strip('*_ ').strip()
 
 
 def split_label(text: str) -> tuple[str, str]:
@@ -83,11 +84,25 @@ def split_items(text: str) -> list[str]:
     return [re.sub(r'^\s*(?:[-•*]|\d+[.)])\s*', '', p).strip() for p in parts if p.strip()][:15]
 
 
+INLINE_TAG = re.compile(r'[*_]*\\?\[\s*([A-Za-zÀ-ÿ]{3,12})\s*\\?\][*_]*')
+
+
+def one_tag_per_line(answer: str) -> str:
+    """ChatGPT affiche du Markdown : un simple retour à la ligne y devient un espace, donc NathGPT renvoie
+    parfois toutes les balises sur une seule ligne (« [TITRE] Bilan [TEXTE] … ») ou échappées (« \\[TITRE\\] »).
+    Chaque balise connue est remise au début d'une ligne."""
+    def cut(match: re.Match) -> str:
+        if tag_name(match.group(1)) not in TAGS:
+            return match.group(0)
+        return f'\n[{match.group(1)}] '
+    return INLINE_TAG.sub(cut, str(answer or '').replace('\r', ''))
+
+
 def parse(answer: str) -> list[dict]:
     """Découpe la réponse en blocs : title, text, box, stat, list, steps, tip, warning, question, color."""
     blocks: list[dict] = []
     current: dict | None = None
-    for line in str(answer or '').replace('\r', '').split('\n'):
+    for line in one_tag_per_line(answer).split('\n'):
         match = TAG_LINE.match(line)
         kind = TAGS.get(tag_name(match.group(1))) if match else None
         if kind:
