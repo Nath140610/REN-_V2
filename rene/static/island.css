@@ -1,0 +1,85 @@
+/* Île dynamique : une pastille noire qui s'étire avec un léger ressort, comme sur iPhone. */
+:root{--spring:cubic-bezier(.2,.9,.25,1.12)}
+
+#notice{display:none!important} /* les messages passent par l'île */
+
+.island{position:fixed;z-index:260;top:calc(10px + env(safe-area-inset-top));left:50%;
+  width:124px;height:36px;transform:translateX(-50%);border-radius:22px;background:#000;color:#F5F5F7;
+  box-shadow:0 0 0 1px rgba(255,255,255,.07),0 10px 30px rgba(0,0,0,.55);overflow:hidden;
+  transition:width .55s var(--spring),height .55s var(--spring),border-radius .45s var(--ease),box-shadow .5s var(--ease)}
+@media(min-width:761px){.island{left:calc(260px + (100vw - 260px) / 2)}}
+.island.expanded{border-radius:30px;box-shadow:0 0 0 1px rgba(255,255,255,.09),0 24px 70px rgba(0,0,0,.75)}
+.island-body{position:absolute;inset:0;display:block;width:auto;height:auto;margin:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.island-content{height:100%;transition:opacity .13s var(--ease),filter .13s var(--ease)}
+.island-content.swap{opacity:0;filter:blur(4px)}
+
+.island-row{display:flex;align-items:center;gap:10px;height:100%;padding:0 12px 0 6px;white-space:nowrap}
+.island.idle .island-row{justify-content:space-between;padding:0 12px 0 4px}
+.island-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:14px;font-weight:600;letter-spacing:-.01em}
+.island-trail{display:flex;align-items:center;gap:8px;flex:none}
+.island-value{font-size:13px;font-weight:600;color:var(--text-2);font-variant-numeric:tabular-nums}
+
+.island-lead{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:#1C1C1E;font-size:14px;font-weight:700}
+.island-lead.avatar{padding:2px;background:var(--halo-conic)}
+.island-lead.avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;border:2px solid #000}
+.island .island-lead.good{background:rgba(48,209,88,.18);color:var(--green)}
+.island .island-lead.bad{background:rgba(255,105,97,.18);color:var(--red)}
+.island .island-lead.warn{background:rgba(255,165,60,.18);color:#FFA53C}
+.island .island-lead.notify{background:rgba(255,70,170,.18);color:#FF6FBE}
+.island .island-lead.halo{background:var(--halo-conic);color:#fff}
+
+.island-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(48,209,88,.8)}
+.island-dot.off{background:#FFA53C;box-shadow:0 0 8px rgba(255,165,60,.8);animation:dot-breathe 2.4s var(--ease) infinite}
+@keyframes dot-breathe{50%{opacity:.35}}
+.island-spinner{width:16px;height:16px;border-radius:50%;border:2px solid #3A3A3C;border-top-color:#F5F5F7;animation:spin .8s linear infinite}
+.island-ring{width:20px;height:20px;transform:rotate(-90deg)}
+.island-ring circle{fill:none;stroke-width:3}
+.island-ring .track{stroke:#3A3A3C}
+.island-ring .bar{stroke:#0A84FF;stroke-linecap:round;stroke-dasharray:100;transition:stroke-dashoffset .8s var(--ease)}
+.island-comet{position:relative;width:46px;height:4px;border-radius:4px;background:#1C1C1E;overflow:hidden}
+.island-comet::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#286EFF,#965AFF,#FF46AA,var(--white),transparent);background-size:60% 100%;background-repeat:no-repeat;animation:comet 1.8s var(--ease) infinite}
+.island-go{font-size:20px;color:var(--text-2)}
+
+/* Messages : un éclat de la couleur du message, qui retombe */
+.island.notice.good{box-shadow:0 0 0 1px rgba(48,209,88,.35),0 0 26px rgba(48,209,88,.18),0 10px 30px rgba(0,0,0,.55)}
+.island.notice.bad{box-shadow:0 0 0 1px rgba(255,105,97,.4),0 0 26px rgba(255,105,97,.2),0 10px 30px rgba(0,0,0,.55)}
+.island.notice.notify{box-shadow:0 0 0 1px rgba(255,70,170,.4),0 0 26px rgba(255,70,170,.22),0 10px 30px rgba(0,0,0,.55)}
+.island.compact.warn{box-shadow:0 0 0 1px rgba(255,165,60,.35),0 10px 30px rgba(0,0,0,.55)}
+
+/* Moment fort : le halo entoure l'île puis s'éteint */
+.island::before{content:"";position:absolute;inset:-2px;border-radius:inherit;padding:2px;background:var(--halo-conic);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  opacity:0;pointer-events:none}
+.island.glow::before{animation:island-glow 1.6s var(--ease) forwards}
+.island.glow{box-shadow:0 0 34px rgba(150,90,255,.45),0 10px 30px rgba(0,0,0,.55)}
+@keyframes island-glow{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
+
+/* Île déployée */
+.island-panel{padding:16px 18px 18px;white-space:normal;animation:appear .35s var(--ease-out)}
+.island-head{display:flex;align-items:center;gap:12px}
+.island-head .island-lead{width:40px;height:40px}
+.island-who{flex:1;min-width:0}
+.island-who strong{display:block;font-size:17px}
+.island-who small{display:block;font-size:13px;color:var(--text-2);margin-top:2px}
+.island-time{font-size:13px;color:var(--text-2);font-variant-numeric:tabular-nums;flex:none}
+.island-label{margin:18px 2px 8px;font-size:11px;letter-spacing:.04em;color:var(--text-3);font-weight:600}
+.island-activity{padding:12px;border-radius:16px;background:#1C1C1E;margin-bottom:8px}
+.island-activity-top{display:flex;align-items:center;gap:10px}
+.island-activity .island-text{white-space:normal;font-weight:500}
+.island-bar{height:6px;margin-top:10px;border-radius:6px;background:#3A3A3C;overflow:hidden}
+.island-bar span{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#286EFF,#965AFF,#FF46AA);transition:width .8s var(--ease)}
+.island-actions{display:flex;gap:8px;margin-top:10px}
+.island-button{border:0;border-radius:999px;padding:7px 14px;background:#2C2C2E;color:var(--blue);font-size:13px;font-weight:600}
+.island-button.danger{color:var(--red)}
+.island-history{display:flex;align-items:center;gap:10px;width:100%;padding:8px 4px;border:0;background:transparent;color:inherit;text-align:left;border-radius:12px}
+.island-history:not(:disabled):active{background:#1C1C1E}
+.island-history:disabled{cursor:default;opacity:1}
+.island-history .island-lead{width:26px;height:26px;font-size:12px}
+.island-history .island-text{font-weight:500;font-size:14px;white-space:normal}
+.island-empty{margin:4px 2px 0;color:var(--text-2);font-size:14px}
+
+@media (prefers-reduced-motion:reduce){.island{transition-duration:.01ms}}
+
+.island-measure{position:fixed;left:-9999px;top:0;visibility:hidden;pointer-events:none;white-space:nowrap}
+.island-measure .island-row{height:40px}
+.island-measure .island-text{flex:none;overflow:visible}
