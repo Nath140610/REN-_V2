@@ -95,6 +95,15 @@ class RobloxStatsTest(unittest.TestCase):
         self.assertIn('/api/roblox/heartbeat', text)
         self.assertIn('left = left', text)
 
+    def test_live_players_from_script_beat_late_roblox_count(self):
+        late = dict(PUBLIC, playing=0, servers=[])
+        with patch.object(robloxstats, 'fetch_public', new=AsyncMock(return_value=late)):
+            self.beat([('1', 'Lea')], job='studio')
+            result = asyncio.run(robloxstats.build(7, 'christmasrun'))['items'][0]
+        self.assertEqual(result['online']['players'], 1)
+        self.assertEqual(result['servers'][0]['playing'], 1)
+        self.assertTrue(result['servers'][0]['studio'])
+
     def test_closing_server_disappears(self):
         self.beat([('1', 'Lea')], job='job-c')
         self.assertIn('job-c', robloxstats.online('christmasrun'))

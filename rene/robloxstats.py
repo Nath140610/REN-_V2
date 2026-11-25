@@ -383,7 +383,10 @@ async def build_game(game_id: str, days: int) -> dict:
     return {
         'id': game_id, 'name': game['name'], 'configured': bool(public),
         'public': {k: v for k, v in (public or {}).items() if k != 'servers'},
-        'online': {'players': (public or {}).get('playing', script_players),
+        # ReneStats est en temps réel ; le chiffre public de Roblox a plusieurs minutes de retard
+        # et ne compte pas les tests dans Studio. On garde le plus grand des deux.
+        'online': {'players': max(script_players, int((public or {}).get('playing') or 0)),
+                   'roblox_players': int((public or {}).get('playing') or 0),
                    'script_players': script_players, 'servers': len(listed),
                    'private_servers': sum(1 for s in listed if s['private'])},
         'servers': listed[:60],

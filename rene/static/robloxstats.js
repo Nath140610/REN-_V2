@@ -26,7 +26,8 @@ function rbxServers(host, game) {
     if (server.fps != null) details.push(`${server.fps} fps`);
     if (server.ping != null) details.push(`${server.ping} ms`);
     if (server.uptime != null) details.push(`ouvert depuis ${humanDuration(server.uptime)}`);
-    if (server.source === 'roblox') details.push('liste publique Roblox');
+    if (server.source === 'roblox') details.push(server.playing ? 'vu par Roblox seulement : ReneStats ne tourne pas sur ce serveur' : 'vu par Roblox seulement : chiffre en retard de quelques minutes, ReneStats ne tourne pas sur ce serveur');
+    else details.push('suivi en direct par ReneStats');
     row.append(top, track, el('small', 'rbx-sub', details.join(' · ')));
     if (server.players.length) {
       row.append(el('small', 'rbx-names', server.players.map(p => p.name).join(', ')));
@@ -80,7 +81,7 @@ function rbxRender(game) {
   const p = game.public, o = game.online, d = game.period, days = statsState.days;
   rbxHead($('#rbx-head'), game);
   $('#rbx-now').replaceChildren(
-    statCard('Joueurs en ligne', fmt(o.players), o.script_players && o.script_players !== o.players ? `${fmt(o.script_players)} vus par René` : `maximum ${fmt(p.max_players)} par serveur`, '◉'),
+    statCard('Joueurs en ligne', fmt(o.players), `${fmt(o.script_players)} via ReneStats · ${fmt(o.roblox_players)} selon Roblox`, '◉'),
     statCard('Serveurs en ligne', fmt(o.servers), o.private_servers ? `dont ${fmt(o.private_servers)} privé(s)` : 'serveurs actifs', '▦'),
     statCard('Visites', fmt(p.visits), d.visits ? `+${fmt(d.visits)} en ${days} jours` : 'au total', '↗'),
     statCard('J’aime', pct(p.like_rate), `${fmt(p.likes)} j’aime · ${fmt(p.dislikes)} non · ${fmt(p.favorites)} favoris`, '♥'),
