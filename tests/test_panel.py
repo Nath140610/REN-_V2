@@ -84,7 +84,7 @@ class AnalyticsTest(unittest.TestCase):
 
 
 class AITest(unittest.TestCase):
-    def test_prompt_fits_nathgpt_discord_limit(self):
+    def test_prompt_fits_nathgpt_limit_and_asks_for_tags(self):
         context = {
             'guild': {'name': 'Serveur de test'}, 'since': '2026-10-01',
             'totals_30_days': {'messages': 1200, 'joins': 25},
@@ -96,8 +96,9 @@ class AITest(unittest.TestCase):
                                      for _ in range(12)],
         }
         prompt = ai.build_prompt('Résume les tendances du serveur.', context)
-        self.assertLessEqual(len(prompt), 1800)
+        self.assertLessEqual(len(prompt), 6000)
         self.assertIn('Résume les tendances', prompt)
+        self.assertIn('[CHIFFRE]', prompt)
 
 
 class PanelActionsTest(unittest.IsolatedAsyncioTestCase):

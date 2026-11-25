@@ -71,14 +71,16 @@ class TicketAssistantTest(unittest.IsolatedAsyncioTestCase):
             {'kind': 'role', 'id': '40', 'label': 'Support codes', 'description': 'Codes cadeau'},
             {'kind': 'user', 'id': '3', 'label': 'Nath', 'description': ''}]}
         self.channel.history = history([Mock(author=self.lea, content='Mon code ne marche pas', embeds=[])])
-        ask = AsyncMock(return_value={'text': 'Salut Léa, envoie-moi une capture.'})
+        ask = AsyncMock(return_value={'text': '[TITRE] Code refusé\n[TEXTE] Salut Léa, envoie-moi une capture.'})
         with patch.object(nathgpt, 'configured', return_value=True), \
                 patch.object(nathgpt.NathGPTClient, 'ask', ask):
             await tka.welcome(self.channel)
         self.assertIn('Mon code ne marche pas', ask.await_args.args[0])
         self.assertEqual(ask.await_args.kwargs['conversation_id'], 'ticket_50')
         first, second = self.channel.send.await_args_list
-        self.assertEqual(first.args[0], 'Salut Léa, envoie-moi une capture.')
+        self.assertEqual(first.kwargs['embed'].title, 'Code refusé')
+        self.assertEqual(first.kwargs['embed'].description, 'Salut Léa, envoie-moi une capture.')
+        self.assertIn('[ENCART]', ask.await_args.args[0])
         view = second.kwargs['view']
         self.assertEqual([b.item.label for b in view.children], ['Support codes', 'Nath'])
         self.assertEqual(view.children[0].item.custom_id, 'rene_tkt:r40')

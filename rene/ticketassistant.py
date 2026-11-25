@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 import discord
 
-from rene import analytics, core, nathgpt, ticketrooms
+from rene import airender, analytics, core, nathgpt, ticketrooms
 
 STATE_KEY = '_ticket_assistant'
 FIRST_DELAY = 8              # laisse le bot de tickets poster son message d'accueil
@@ -145,10 +145,10 @@ async def read_reason(channel: discord.TextChannel, owner: discord.Member | None
 
 
 def ai_prompt(guild: discord.Guild, owner_name: str, reason: str) -> str:
-    return ('Tu es René l’Intérimaire, le bot du serveur Discord « ' + guild.name[:60] + ' » (VoidLoop’s Studio, '
+    return (airender.pre_prompt(700) +
+            'RÔLE : tu es René l’Intérimaire, le bot du serveur Discord « ' + guild.name[:60] + ' » (VoidLoop’s Studio, '
             'créateur des jeux Roblox ChristmasRun et PointNemo). Un membre vient d’ouvrir un ticket. '
-            'Réponds-lui directement, en français, en le tutoyant, de façon chaleureuse et courte '
-            '(4 phrases maximum, moins de 700 caractères, sans titre). Reformule son problème en une phrase, '
+            'Réponds-lui directement en le tutoyant, chaleureusement : reformule son problème en une phrase, '
             'donne une première aide concrète si c’est simple, sinon dis ce qu’il doit préparer '
             '(capture d’écran, pseudo Roblox, code cadeau, date…). Ne promets aucune récompense ni remboursement, '
             'ne donne aucun code, n’invente aucune règle et ne dis pas que tu es une IA. '
@@ -173,7 +173,11 @@ async def greet(channel: discord.TextChannel, owner_name: str, reason: str, use_
             core.logger.warning('TICKET : NathGPT indisponible pour #%s : %s', channel.name, error)
         except discord.HTTPException:
             pass
-    text = (text or fallback_text(owner_name, reason))[:1900]
+    if text:
+        await channel.send(embed=airender.render(text, footer='René l’Intérimaire'),
+                           allowed_mentions=discord.AllowedMentions.none())
+        return text
+    text = fallback_text(owner_name, reason)[:1900]
     await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
     return text
 

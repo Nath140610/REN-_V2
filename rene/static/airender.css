@@ -1,0 +1,20 @@
+/* Réponses mises en page de René IA */
+.bubble.rich{white-space:normal;max-width:min(620px,92%);padding:14px 16px}
+.ai-rich{display:grid;gap:10px}
+.ai-title{margin:0;font-size:17px;font-weight:700;background:linear-gradient(90deg,#5AA9FF,#B48CFF 55%,#FF7AC6);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ai-text{margin:0}
+.ai-box{display:grid;gap:2px;padding:10px 12px;border-radius:12px;background:var(--bg-3);border-left:3px solid #965AFF}
+.ai-box small{color:var(--text-2);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.ai-box strong{font-size:15px}
+.ai-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.ai-stat{display:grid;gap:2px;padding:10px 12px;border-radius:12px;background:var(--bg-3)}
+.ai-stat strong{font-size:20px;font-variant-numeric:tabular-nums}
+.ai-stat small{color:var(--text-2);font-size:12px}
+.ai-list{margin:0;padding-left:22px;display:grid;gap:4px}
+.ai-list li::marker{color:#965AFF;font-weight:700}
+.ai-callout{margin:0;padding:9px 12px;border-radius:12px;font-size:14px}
+.ai-callout.tip{background:rgba(48,209,88,.12)}
+.ai-callout.tip::before{content:"💡 "}
+.ai-callout.warning{background:rgba(255,159,10,.14);font-weight:600}
+.ai-callout.warning::before{content:"⚠️ "}
+.ai-question{margin:0;font-weight:600;color:#5AA9FF}

@@ -17,7 +17,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import discord
 import qrcode
 
-from rene import ai, analytics, core, nathgpt, ticketassistant
+from rene import ai, airender, analytics, core, nathgpt, ticketassistant
 from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
@@ -1312,7 +1312,8 @@ def install_panel(app):
             return jsonify({'status': 'thinking'})
         try:
             answer = job['future'].result()
-            return jsonify({'status': 'done', 'answer': answer})
+            blocks = airender.parse(answer)
+            return jsonify({'status': 'done', 'answer': airender.plain(blocks) or answer, 'blocks': blocks})
         except ValueError as error:
             return jsonify({'status': 'error', 'error': str(error)})
         except Exception:

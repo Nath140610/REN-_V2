@@ -1,7 +1,7 @@
 """Question à NathGPT depuis Discord, réservée au staff."""
 import discord
 from discord import app_commands
-from rene import ai, analytics, core
+from rene import ai, airender, analytics, core
 
 
 @app_commands.command(name='reneia', description='Demander une analyse du serveur à René IA (staff).')
@@ -28,10 +28,8 @@ async def reneia(interaction: discord.Interaction, question: str):
     except ValueError as error:
         await interaction.followup.send(str(error), ephemeral=True)
         return
-    # Discord limite chaque message à 2 000 caractères.
-    chunks = [answer[i:i+1900] for i in range(0, len(answer), 1900)]
-    for chunk in chunks[:12]:
-        await interaction.followup.send(chunk, ephemeral=True)
+    # Réponse mise en page : un embed (titre, encarts, chiffres, listes).
+    await interaction.followup.send(embed=airender.render(answer, footer='René IA · NathGPT'), ephemeral=True)
 
 
 async def setup(client):
