@@ -17,7 +17,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import discord
 import qrcode
 
-from rene import ai, analytics, core
+from rene import ai, analytics, core, nathgpt, ticketassistant
 from rene.commands import rdvexpress
 from rene.commands import rendevous as rdv
 from rene.commands import sendgiftcode as giftcodes
@@ -914,6 +914,50 @@ def install_panel(app):
         days = days if days in (7, 30, 90) else 30
         return response(lambda: run(stats.build(guild_for(positive_id(guild_id)), days), 30))
 
+    @app.get('/api/guild/<guild_id>/ticket-assistant')
+    def ticket_assistant(guild_id):
+        protected()
+        return response(lambda: run(ticketassistant.settings(guild_for(positive_id(guild_id)))))
+
+    @app.post('/api/guild/<guild_id>/ticket-assistant')
+    def ticket_assistant_save(guild_id):
+        protected()
+        return response(lambda: run(ticketassistant.save_settings(guild_for(positive_id(guild_id)), payload()), 30))
+
+    @app.get('/api/system/nathgpt')
+    def nathgpt_status():
+        protected()
+        return jsonify({'url': nathgpt.api_url(), 'url_from_panel': bool(nathgpt.stored_url()),
+                        'env_url': os.getenv('NATHGPT_API_URL', '').strip(), 'token': bool(nathgpt.api_token()),
+                        'configured': nathgpt.configured()})
+
+    @app.post('/api/system/nathgpt')
+    def nathgpt_save():
+        protected()
+        try:
+            url = nathgpt.clean_url(payload().get('url'))
+        except ValueError as error:
+            return jsonify({'error': str(error)}), 400
+        if url:
+            core.bot.config_data[nathgpt.URL_STORE] = url
+        else:
+            core.bot.config_data.pop(nathgpt.URL_STORE, None)
+        core.save_runtime_json(core.CONFIG_FILE, core.bot.config_data)
+        return jsonify({'ok': True, 'url': nathgpt.api_url(),
+                        'message': 'Adresse NathGPT enregistrée.' if url else 'René utilise NATHGPT_API_URL de Render.'})
+
+    @app.post('/api/system/nathgpt/test')
+    def nathgpt_test():
+        protected()
+        async def test():
+            try:
+                result = await nathgpt.client().test()
+            except nathgpt.NathGPTError as error:
+                raise ValueError(str(error)) from None
+            return {'ok': True, 'answer': result['answer'],
+                    'message': f'NathGPT répond : « {result["answer"][:80]} »'}
+        return response(lambda: run(test(), 330))
+
     @app.get('/api/roblox-stats')
     def roblox_game_stats():
         protected()
@@ -1242,7 +1286,7 @@ def install_panel(app):
         if not 1 <= len(question) <= 600:
             return jsonify({'error': 'Écris une question de 1 à 600 caractères.'}), 400
         if not ai.api_key():
-            return jsonify({'error': 'Ajoute NATHGPT_API_KEY ou token dans Render.'}), 503
+            return jsonify({'error': 'Ajoute NATHGPT_API_URL et NATHGPT_API_TOKEN dans Render.'}), 503
         gid = positive_id(guild_id)
         run(snapshot(gid))
         actor = user['sid']
