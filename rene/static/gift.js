@@ -27,7 +27,7 @@
   function flip() {
     if (!s.ready) return;
     s.base = Math.round(s.ry / 180) * 180 + 180;
-    vibrate(8);
+    vibrate(28);
   }
 
   let drag = null;
@@ -296,7 +296,7 @@
     }
     const now = performance.now();
     lastMoveTime = now;
-    if (now - lastVibe > 45) { vibrate(4); lastVibe = now; }
+    if (now - lastVibe > 90) { vibrate(20); lastVibe = now; }
     if (++moves % 6 === 0) measure();
   }
 
@@ -323,7 +323,7 @@
     const ratio = clear / total;
     // Paliers de grattage : un petit tic à 20 % et 40 %, comme une pièce qui accroche.
     for (const step of [0.2, 0.4]) {
-      if (ratio >= step && !s.milestones.has(step)) { s.milestones.add(step); vibrate([10, 30, 10]); }
+      if (ratio >= step && !s.milestones.has(step)) { s.milestones.add(step); vibrate([30, 50, 30]); }
     }
     if (!s.requested && ratio > 0.015) requestCode();
     if (ratio >= 0.58) { s.wantReveal = true; tryReveal(); }
@@ -367,7 +367,7 @@
       if (canvas) canvas.style.opacity = 0;
       scratchBox.classList.add('revealed');
       chime();
-      vibrate([18, 40, 28]);
+      vibrate([40, 70, 60]);
       const rect = scratchBox.getBoundingClientRect();
       spawn(rect.left + rect.width / 2, rect.top + rect.height / 2, 80, 0, HALO, 1.8);
       setTimeout(() => scene.classList.remove('burst'), 900);
@@ -416,7 +416,7 @@
     try {
       await navigator.clipboard.writeText(s.code);
       copyButton.textContent = 'Copié ✓';
-      vibrate(10);
+      vibrate(30);
     } catch {
       const range = document.createRange();
       range.selectNodeContents(codeEl);
@@ -444,7 +444,7 @@
     card.style.setProperty('--shift', `${(50 + offset * 1.2 + s.rx * 0.8).toFixed(1)}%`);
     const back = facingBack();
     if (back !== lastFacing) {
-      if (lastFacing !== null && s.ready) vibrate(6);
+      if (lastFacing !== null && s.ready) vibrate(22);
       lastFacing = back;
       onFacing(back);
     }

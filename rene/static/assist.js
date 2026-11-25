@@ -22,7 +22,7 @@
   const vibrate = pattern => { try { navigator.vibrate?.(pattern); } catch {} };
 
   function notice(text, bad = false) {
-    vibrate(bad ? [40, 40, 40, 40, 40] : [16, 50, 28]);
+    vibrate(bad ? [70, 60, 70, 60, 70] : [40, 70, 60]);
     const box = $('#notice');
     box.textContent = text;
     box.classList.toggle('bad', bad);
@@ -106,7 +106,7 @@
     $('#assist-member').value = member.name;
     $('#assist-member-id').value = member.id;
     $('#assist-selected').textContent = `✓ ${member.name} · @${member.username}`;
-    vibrate([12]);
+    vibrate([32]);
     $('#assist-results').replaceChildren();
     $('#assist-code').focus();
   }
@@ -159,7 +159,7 @@
     $('#assist-result-title').textContent = title;
     $('#assist-result-text').textContent = text;
     $('#assist-form').classList.add('hidden');
-    vibrate(ok ? [16, 50, 28] : [40, 40, 40, 40, 40]);
+    vibrate(ok ? [40, 70, 60] : [70, 60, 70, 60, 70]);
   }
 
   function renderHistory() {

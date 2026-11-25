@@ -82,3 +82,7 @@ body[data-entering] .flow-group:nth-child(n) .flow-bar,body[data-entering] .join
   ::view-transition-old(root),::view-transition-new(root){animation:none}
   .halo-sweep{display:none}
 }
+
+.switch-hint{display:block;font-size:12px;color:var(--text-2);margin-top:2px}
+.haptic-settings .switch-row{padding:6px 0;border:0;margin:0}
+#haptic-support{line-height:1.45}

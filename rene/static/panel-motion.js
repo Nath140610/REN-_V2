@@ -8,29 +8,72 @@
   /* ---------- Vibrations ---------- */
 
   const PATTERNS = {
-    tap: [7],
-    tick: [4],
-    select: [12],
-    toggleOn: [10, 40, 16],
-    toggleOff: [10],
-    open: [6, 24, 12],
-    close: [6],
-    success: [16, 50, 28],
-    error: [40, 40, 40, 40, 40],
-    warning: [28, 60, 28],
-    danger: [55],
-    notify: [12, 70, 12, 70, 22],
-    longPress: [30],
-    refresh: [8, 30, 8],
+    tap: [25],
+    tick: [22],
+    select: [32],
+    toggleOn: [30, 60, 40],
+    toggleOff: [30],
+    open: [25, 50, 35],
+    close: [25],
+    success: [40, 70, 60],
+    error: [70, 60, 70, 60, 70],
+    warning: [55, 80, 55],
+    danger: [90],
+    notify: [35, 90, 35, 90, 50],
+    longPress: [60],
+    refresh: [28, 50, 28],
   };
-  const LEVELS = {light: 0.6, normal: 1, strong: 1.6};
+  const LEVELS = {light: 0.75, normal: 1, strong: 1.6};
+  const MIN_PULSE = 20;
   let lastHaptic = 0;
+  const diagnostics = {api: typeof navigator.vibrate === 'function', lastResult: null, calls: 0};
 
   function settings() {
     try {
       return {on: localStorage.getItem('rene_haptics') !== 'off',
-              level: localStorage.getItem('rene_haptics_level') || 'normal'};
-    } catch { return {on: true, level: 'normal'}; }
+              level: localStorage.getItem('rene_haptics_level') || 'normal',
+              sound: localStorage.getItem('rene_touch_sound') === 'on'};
+    } catch { return {on: true, level: 'normal', sound: false}; }
+  }
+
+  /* ---------- Retour sonore (pour les tablettes sans moteur de vibration) ---------- */
+
+  let audio = null;
+  function audioContext() {
+    if (audio) return audio;
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) return null;
+    audio = new Context();
+    return audio;
+  }
+  // Le navigateur n'autorise le son qu'après un toucher : on débloque au premier appui.
+  addEventListener('pointerdown', () => { if (settings().sound) audioContext()?.resume?.(); }, {passive: true});
+
+  function click(ac, at, length, frequency, volume) {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(frequency, at);
+    osc.frequency.exponentialRampToValueAtTime(frequency * 0.55, at + length);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(volume, at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+    osc.connect(gain).connect(ac.destination);
+    osc.start(at);
+    osc.stop(at + length + 0.02);
+  }
+
+  // Chaque impulsion devient un « toc » doux ; succès et erreur ont leur propre tonalité.
+  function sound(name, steps, level) {
+    const ac = audioContext();
+    if (!ac || ac.state !== 'running') return;
+    const volume = {light: 0.05, normal: 0.09, strong: 0.16}[level] || 0.09;
+    const tone = {success: 1320, error: 330, danger: 260, warning: 520, notify: 990}[name] || 1700;
+    let at = ac.currentTime + 0.005;
+    steps.forEach((ms, i) => {
+      if (i % 2 === 0) click(ac, at, Math.min(0.09, Math.max(0.025, ms / 1000)), name === 'success' && i ? tone * 1.5 : tone, volume);
+      at += ms / 1000;
+    });
   }
 
   function toPattern(pattern) {
@@ -41,15 +84,22 @@
 
   // Remplace haptic() de panel-extra.js : premier geste prioritaire, intensité réglable.
   function vibrate(pattern = 'select', force = false) {
-    const {on, level} = settings();
-    if ((!on && !force) || !navigator.vibrate) return;
+    const {on, level, sound: withSound} = settings();
+    if (!on && !force) return;
     const now = performance.now();
-    // Le clic générique (8 ms) arrive juste après le geste précis : on garde le premier.
+    // Le clic générique arrive juste après le geste précis : on garde le premier.
     if (!force && now - lastHaptic < 70) return;
     lastHaptic = now;
     const scale = LEVELS[level] || 1;
-    const steps = toPattern(pattern).map((ms, i) => i % 2 ? ms : Math.min(120, Math.max(3, Math.round(ms * scale))));
-    try { navigator.vibrate(steps); } catch {}
+    const name = typeof pattern === 'string' ? pattern : 'tap';
+    const steps = toPattern(pattern).map((ms, i) => i % 2 ? ms : Math.min(150, Math.max(MIN_PULSE, Math.round(ms * scale))));
+    if (diagnostics.api) {
+      try {
+        diagnostics.lastResult = navigator.vibrate(steps);
+        diagnostics.calls += 1;
+      } catch { diagnostics.lastResult = false; }
+    }
+    if (withSound) sound(name, steps, level);
   }
   haptic = vibrate;
   window.reneHaptic = vibrate;
@@ -358,7 +408,7 @@
     const {on, level} = settings();
     for (const button of levelControl.querySelectorAll('button')) button.classList.toggle('active', button.dataset.level === level);
     levelControl.classList.toggle('disabled', !on);
-    $('#haptic-test').disabled = !on;
+    $('#haptic-test').disabled = !on && !settings().sound;
   }
   for (const button of levelControl.querySelectorAll('button')) {
     button.onclick = () => {
@@ -372,10 +422,38 @@
     renderLevel();
     if (event.target.checked) vibrate('toggleOn', true);
   };
+  function diagnose() {
+    const activated = navigator.userActivation ? navigator.userActivation.hasBeenActive : true;
+    if (!diagnostics.api) {
+      return 'Ce navigateur ne gère pas les vibrations. Ouvre le panel dans Chrome ou Samsung Internet, ou active le retour sonore.';
+    }
+    if (!activated) return 'Touche l’écran une fois : le navigateur n’autorise les vibrations qu’après un premier toucher.';
+    if (diagnostics.lastResult === false) {
+      return 'Le navigateur a refusé la vibration. Vérifie que le mode économie d’énergie ou « Ne pas déranger » ne coupe pas les vibrations, puis réessaie.';
+    }
+    return 'Le signal a bien été envoyé à la tablette. Si tu n’as rien senti, ta tablette n’a sans doute pas de moteur de vibration '
+      + '(c’est le cas de la plupart des Galaxy Tab : regarde dans Paramètres → Sons et vibrations s’il existe une intensité des vibrations) '
+      + 'ou les vibrations sont coupées dans Android. Active alors le retour sonore.';
+  }
+
   $('#haptic-test').onclick = () => {
+    if (settings().sound) audioContext()?.resume?.();
     const sequence = ['select', 'success', 'warning', 'error'];
-    sequence.forEach((name, i) => setTimeout(() => vibrate(name, true), i * 650));
+    sequence.forEach((name, i) => setTimeout(() => vibrate(name, true), i * 700));
+    setTimeout(() => { $('#haptic-support').textContent = diagnose(); }, 120);
   };
-  if (!navigator.vibrate) $('#haptic-support').textContent = 'Ce navigateur ne gère pas les vibrations.';
+
+  const soundToggle = $('#sound-toggle');
+  soundToggle.checked = settings().sound;
+  soundToggle.onchange = () => {
+    try { localStorage.setItem('rene_touch_sound', soundToggle.checked ? 'on' : 'off'); } catch {}
+    if (soundToggle.checked) {
+      audioContext()?.resume?.().then?.(() => vibrate('toggleOn', true));
+    }
+  };
+  if (!diagnostics.api) {
+    $('#haptic-support').textContent = 'Ce navigateur ne gère pas les vibrations. Active le retour sonore.';
+  }
+  window.reneHapticDiagnostics = () => ({...diagnostics, activated: navigator.userActivation?.hasBeenActive, message: diagnose()});
   renderLevel();
 })();
